@@ -37,7 +37,7 @@ pipedream-connect-examples/
 | [PLAN-02](PLAN-02-connect-angular-core.md) | Core library: services, DI tokens, provider | PLAN-01 (for context) | [summary](PLAN-02-summary.md) |
 | [PLAN-03](PLAN-03-selectors.md) | AppSelector and ComponentSelector components | PLAN-02 | [summary](PLAN-03-summary.md) |
 | [PLAN-04](PLAN-04-component-form.md) | Dynamic ComponentForm (all prop types) | PLAN-02, PLAN-03 | [summary](PLAN-04-summary.md) |
-| [PLAN-05](PLAN-05-workflow-service.md) | Workflow data model + WorkflowService | PLAN-02 | |
+| [PLAN-05](PLAN-05-workflow-service.md) | Workflow data model + WorkflowService | PLAN-02 | [summary](PLAN-05-summary.md) |
 | [PLAN-06](PLAN-06-workflow-builder-ui.md) | Workflow Builder UI (visual graph) | PLAN-03, PLAN-04, PLAN-05 | |
 | [PLAN-07](PLAN-07-myapp-integration.md) | Wire everything into myapp demo | PLAN-01–06 | |
 | [PLAN-08](PLAN-08-ai-chat-mcp.md) | Phase 2: AI chat via Pipedream MCP | PLAN-07 | |

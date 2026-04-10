@@ -43,4 +43,16 @@ All files are generated code with no external configuration dependencies. The li
 
 ---
 
+## After PLAN-05 — Workflow Data Model & WorkflowService
+
+**Status:** Implemented. Build passes.
+
+### No manual action required
+
+`WorkflowService` is `providedIn: 'root'` and self-contained. No external configuration or credentials needed.
+
+### Ready for
+
+PLAN-06 (Workflow Builder UI) can now consume `WorkflowService` and the workflow model types directly from `@poc/connect-angular`.
+
 <!-- Add a new section here after each subsequent plan is implemented -->

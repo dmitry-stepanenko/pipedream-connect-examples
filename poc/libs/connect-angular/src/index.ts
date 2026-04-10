@@ -16,3 +16,15 @@ export { ComponentFormComponent } from './lib/components/component-form/componen
 
 // Provider
 export { provideConnectAngular } from './lib/provide-connect-angular';
+
+// Workflow models
+export type {
+  Workflow,
+  WorkflowStep,
+  WorkflowStepData,
+  PipedreamStep,
+  CustomTriggerStep,
+} from './lib/models/workflow.model';
+
+// Workflow service
+export { WorkflowService } from './lib/services/workflow.service';
