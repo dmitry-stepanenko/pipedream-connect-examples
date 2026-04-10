@@ -3,52 +3,104 @@
     <p>Select or create a workflow to start building.</p>
   </div>
 } @else {
-  <div class="pd-workflow-builder">
-    <!-- Header -->
-    <div class="pd-builder-header">
-      @if (editingName()) {
-        <input
-          #nameInput
-          class="pd-workflow-name-input"
-          [value]="workflow.name"
-          (blur)="saveName(nameInput.value)"
-          (keydown.enter)="saveName(nameInput.value)"
-          (keydown.escape)="editingName.set(false)"
-          autofocus
-        />
-      } @else {
-        <h2 class="pd-workflow-name" (click)="editingName.set(true)" title="Click to rename">
-          {{ workflow.name }}
-        </h2>
-      }
+  <div class="pd-builder-layout">
+    <!-- Left: step chain -->
+    <div class="pd-builder-chain">
+      <div class="pd-builder-header">
+        @if (editingName()) {
+          <input
+            #nameInput
+            class="pd-workflow-name-input"
+            [value]="workflow.name"
+            (blur)="saveName(nameInput.value)"
+            (keydown.enter)="saveName(nameInput.value)"
+            (keydown.escape)="editingName.set(false)"
+            autofocus
+          />
+        } @else {
+          <h2 class="pd-workflow-name" (click)="editingName.set(true)" title="Click to rename">
+            {{ workflow.name }}
+          </h2>
+        }
+      </div>
+
+      <div
+        class="pd-step-chain"
+        cdkDropList
+        [cdkDropListData]="workflowService.activeSteps()"
+        (cdkDropListDropped)="onDrop($event)"
+      >
+        @for (step of workflowService.activeSteps(); track step.id; let i = $index) {
+          <div cdkDrag [cdkDragDisabled]="i === 0">
+            <pd-workflow-step
+              [step]="step"
+              [stepIndex]="i"
+              [selected]="selectedStepId() === step.id"
+              (select)="selectStep(step.id)"
+              (remove)="removeStep(step.id)"
+            />
+            @if (i < workflowService.activeSteps().length - 1) {
+              <div class="pd-connector" aria-hidden="true">↓</div>
+            }
+          </div>
+        }
+      </div>
+
+      <button type="button" class="pd-add-step-btn" (click)="addStep()">
+        + Add Step
+      </button>
     </div>
 
-    <!-- Step chain with drag-drop -->
-    <div
-      class="pd-step-chain"
-      cdkDropList
-      [cdkDropListData]="workflowService.activeSteps()"
-      (cdkDropListDropped)="onDrop($event)"
-    >
-      @for (step of workflowService.activeSteps(); track step.id; let i = $index) {
-        <div cdkDrag [cdkDragDisabled]="i === 0">
-          <pd-workflow-step
-            [step]="step"
-            [workflowId]="workflow.id"
-            [stepIndex]="i"
-            (remove)="removeStep(step.id)"
-          />
-          <!-- Connector arrow between steps -->
-          @if (i < workflowService.activeSteps().length - 1) {
-            <div class="pd-connector" aria-hidden="true">↓</div>
+    <!-- Right: detail panel -->
+    <div class="pd-builder-panel">
+      @if (selectedStep(); as step) {
+        <div class="pd-panel-content">
+          @if (!step.data) {
+            <h3 class="pd-panel-title">
+              {{ step.type === 'trigger' ? 'Choose a trigger' : 'Choose an action' }}
+            </h3>
+            <pd-step-picker
+              [stepType]="step.type"
+              (picked)="onStepPicked($event)"
+            />
+          } @else if (selectedPipedreamData(); as pd) {
+            <div class="pd-panel-header">
+              <div>
+                <h3 class="pd-panel-title">{{ pd.component.name }}</h3>
+                <small class="pd-panel-subtitle">{{ pd.app.name }}</small>
+              </div>
+              <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" (click)="clearStepData()">
+                Change
+              </button>
+            </div>
+            @if (pd.component) {
+              <pd-component-form
+                [component]="pd.component"
+                [configuredProps]="pd.configuredProps"
+                (configure)="onFormConfigure($event)"
+              />
+            }
+          } @else if (selectedCustomData()) {
+            <div class="pd-panel-header">
+              <div>
+                <h3 class="pd-panel-title">{{ selectedCustomTriggerName() }}</h3>
+                <small class="pd-panel-subtitle">Custom trigger</small>
+              </div>
+              <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" (click)="clearStepData()">
+                Change
+              </button>
+            </div>
+            <p class="pd-custom-trigger-info">
+              This step triggers the workflow from your internal system.
+              No additional configuration required here.
+            </p>
           }
+        </div>
+      } @else {
+        <div class="pd-panel-placeholder">
+          <p>Select a step to configure it.</p>
         </div>
       }
     </div>
-
-    <!-- Add step button -->
-    <button type="button" class="pd-add-step-btn" (click)="addStep()">
-      + Add Step
-    </button>
   </div>
 }

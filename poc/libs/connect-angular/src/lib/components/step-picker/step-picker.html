@@ -3,7 +3,7 @@
     @case ('choose-source') {
       <div class="pd-picker-options">
         <!-- Custom triggers section (only if any are registered) -->
-        @if (customTriggers.length > 0) {
+        @if (stepType() === 'trigger' && customTriggers.length > 0) {
           <div class="pd-picker-section">
             <h4>Your Triggers</h4>
             <ul class="pd-custom-trigger-list">

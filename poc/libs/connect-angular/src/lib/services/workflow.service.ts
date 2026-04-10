@@ -104,7 +104,7 @@ export class WorkflowService {
   /**
    * Update the data for a specific step (app, component, configuredProps or customTriggerId).
    */
-  configureStep(workflowId: string, stepId: string, data: WorkflowStepData) {
+  configureStep(workflowId: string, stepId: string, data: WorkflowStepData | null) {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId

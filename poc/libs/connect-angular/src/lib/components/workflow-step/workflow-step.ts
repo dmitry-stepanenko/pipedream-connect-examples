@@ -1,26 +1,20 @@
-import { Component, input, output, signal, inject, computed } from '@angular/core';
-import type { WorkflowStep, WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
-import type { ConfiguredProps } from '@pipedream/sdk';
-import { WorkflowService } from '../../services/workflow.service';
+import { Component, input, output, computed, inject } from '@angular/core';
+import type { WorkflowStep, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
 import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
-import { StepPickerComponent } from '../step-picker/step-picker';
-import { ComponentFormComponent } from '../component-form/component-form';
 
 @Component({
   selector: 'pd-workflow-step',
   standalone: true,
-  imports: [StepPickerComponent, ComponentFormComponent],
   templateUrl: './workflow-step.html',
   styleUrl: './workflow-step.css',
 })
 export class WorkflowStepComponent {
   step = input.required<WorkflowStep>();
-  workflowId = input.required<string>();
   stepIndex = input.required<number>();
+  selected = input(false);
+  select = output<void>();
   remove = output<void>();
 
-  protected readonly expanded = signal(false);
-  protected readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
 
   protected readonly isPipedream = computed(
@@ -36,28 +30,10 @@ export class WorkflowStepComponent {
     return d?.source === 'pipedream' ? (d as PipedreamStep) : null;
   });
 
-  protected readonly customData = computed((): CustomTriggerStep | null => {
-    const d = this.step().data;
-    return d?.source === 'custom' ? (d as CustomTriggerStep) : null;
-  });
-
   protected readonly customTriggerName = computed((): string => {
-    const d = this.customData();
-    if (!d) return '';
-    return this.customTriggers.find((t) => t.id === d.customTriggerId)?.name ?? d.customTriggerId;
+    const d = this.step().data;
+    if (d?.source !== 'custom') return '';
+    const ct = d as CustomTriggerStep;
+    return this.customTriggers.find((t) => t.id === ct.customTriggerId)?.name ?? ct.customTriggerId;
   });
-
-  protected onStepPicked(data: WorkflowStepData) {
-    this.workflowService.configureStep(this.workflowId(), this.step().id, data);
-    this.expanded.set(true); // open form after picking
-  }
-
-  protected onFormConfigure(configuredProps: ConfiguredProps) {
-    const current = this.pipedreamData();
-    if (!current) return;
-    this.workflowService.configureStep(this.workflowId(), this.step().id, {
-      ...current,
-      configuredProps,
-    });
-  }
 }
