@@ -24,7 +24,7 @@
 
     @if (isOpen() && filteredApps().length > 0) {
       <ul class="pd-app-list" role="listbox">
-        @for (app of filteredApps(); track app.name_slug) {
+        @for (app of filteredApps(); track app.nameSlug) {
           <li
             class="pd-app-option"
             role="option"

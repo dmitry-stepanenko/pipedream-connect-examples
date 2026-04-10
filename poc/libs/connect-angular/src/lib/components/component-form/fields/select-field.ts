@@ -1,4 +1,4 @@
-import { Component, input, output, signal, effect, inject } from '@angular/core';
+import { Component, input, output, signal, effect, inject, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfigurableProp, ConfiguredProps, PropOption } from '@pipedream/sdk';
 import { PipedreamClientService } from '../../../services/pipedream-client.service';
@@ -64,11 +64,20 @@ export class SelectFieldComponent {
   constructor() {
     effect(() => {
       const prop = this.prop();
-      this.loadOptions(prop);
+      // Read context with untracked so changes to these don't re-trigger the effect
+      const configuredProps = untracked(() => this.configuredProps());
+      const componentId = untracked(() => this.componentId());
+      const dynamicPropsId = untracked(() => this.dynamicPropsId());
+      this.loadOptions(prop, configuredProps, componentId, dynamicPropsId);
     });
   }
 
-  private async loadOptions(prop: ConfigurableProp) {
+  private async loadOptions(
+    prop: ConfigurableProp,
+    configuredProps: ConfiguredProps,
+    componentId: string,
+    dynamicPropsId: string | undefined,
+  ) {
     const propAny = prop as ConfigurableProp & { options?: unknown[] };
 
     if (prop.remoteOptions) {
@@ -76,10 +85,10 @@ export class SelectFieldComponent {
       this.loading.set(true);
       try {
         const result = await this.client.configureProp(
-          this.componentId(),
+          componentId,
           prop.name,
-          this.configuredProps() as Record<string, unknown>,
-          this.dynamicPropsId(),
+          configuredProps as Record<string, unknown>,
+          dynamicPropsId,
         );
         const opts: SelectOption[] = [];
         if (result.options) {

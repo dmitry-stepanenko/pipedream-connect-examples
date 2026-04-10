@@ -1,4 +1,4 @@
-import { Component, input, output, signal, computed } from '@angular/core';
+import { Component, input, output, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfigurableProp } from '@pipedream/sdk';
 import { FieldWrapperComponent } from './field-wrapper';
@@ -90,13 +90,21 @@ export class TimerFieldComponent {
   value = input<TimerValue | null>(null);
   valueChange = output<TimerValue>();
 
-  protected readonly mode = signal<TimerMode>('cron');
+  // Derived from value so loading a saved workflow restores the correct mode
+  protected readonly mode = computed<TimerMode>(() =>
+    this.value()?.intervalSeconds !== undefined ? 'interval' : 'cron'
+  );
 
   protected readonly cronValue = computed(() => this.value()?.cron ?? '');
   protected readonly intervalValue = computed(() => this.value()?.intervalSeconds ?? null);
 
   protected setMode(m: TimerMode) {
-    this.mode.set(m);
+    // Emit a skeleton value so the parent updates value(), which drives mode()
+    if (m === 'interval') {
+      this.valueChange.emit({ intervalSeconds: this.value()?.intervalSeconds ?? 0 });
+    } else {
+      this.valueChange.emit({ cron: this.value()?.cron ?? '' });
+    }
   }
 
   protected onCronChange(cron: string) {

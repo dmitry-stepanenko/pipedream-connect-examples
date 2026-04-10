@@ -77,7 +77,9 @@ export class ComponentFormComponent {
   }
 
   protected onSubmit() {
+    this.submitting.set(true);
     this.submitted.emit(this.configuredProps());
+    this.submitting.set(false);
   }
 
   /**
@@ -106,8 +108,8 @@ export class ComponentFormComponent {
         this.dynamicPropsId(),
       );
 
-      if (result.dynamicProps?.configurableProps) {
-        this.props.set(result.dynamicProps.configurableProps);
+      this.props.set(result.dynamicProps?.configurableProps ?? allProps);
+      if (result.dynamicProps?.id) {
         this.dynamicPropsId.set(result.dynamicProps.id);
       }
 
