@@ -9,5 +9,9 @@ export type { CustomTrigger, JsonSchema, JsonSchemaProperty } from './lib/models
 // Services
 export { PipedreamClientService } from './lib/services/pipedream-client.service';
 
+// Components
+export { AppSelectorComponent } from './lib/components/app-selector/app-selector';
+export { ComponentSelectorComponent } from './lib/components/component-selector/component-selector';
+
 // Provider
 export { provideConnectAngular } from './lib/provide-connect-angular';

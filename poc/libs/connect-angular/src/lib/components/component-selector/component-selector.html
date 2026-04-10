@@ -1,0 +1,32 @@
+<div class="pd-component-selector">
+  @if (value()) {
+    <div class="pd-selected-component">
+      <span>{{ value()?.name }}</span>
+      <button type="button" (click)="clear()">✕</button>
+    </div>
+  } @else if (loading()) {
+    <p class="pd-loading">Loading {{ componentType() }}s...</p>
+  } @else if (error()) {
+    <p class="pd-error">{{ error() }}</p>
+  } @else {
+    <ul class="pd-component-list" role="listbox">
+      @for (component of components(); track component.key) {
+        <li
+          class="pd-component-option"
+          role="option"
+          (click)="select(component)"
+          (keydown.enter)="select(component)"
+          tabindex="0"
+        >
+          <strong>{{ component.name }}</strong>
+          @if (component.description) {
+            <small>{{ component.description }}</small>
+          }
+        </li>
+      }
+      @if (components().length === 0) {
+        <li class="pd-empty">No {{ componentType() }}s found for this app.</li>
+      }
+    </ul>
+  }
+</div>

@@ -1,0 +1,48 @@
+<div class="pd-app-selector">
+  @if (value()) {
+    <div class="pd-selected-app">
+      @if (value()?.img) {
+        <img [src]="value()!.img" [alt]="value()!.name" class="pd-app-icon" />
+      }
+      <span>{{ value()?.name }}</span>
+      <button type="button" (click)="clear()" aria-label="Clear">✕</button>
+    </div>
+  } @else {
+    <div class="pd-app-search">
+      <input
+        type="text"
+        placeholder="Search apps..."
+        [ngModel]="query()"
+        (ngModelChange)="onSearch($event)"
+        (focus)="isOpen.set(true)"
+        autocomplete="off"
+      />
+      @if (loading()) {
+        <span class="pd-loading">Loading...</span>
+      }
+    </div>
+
+    @if (isOpen() && filteredApps().length > 0) {
+      <ul class="pd-app-list" role="listbox">
+        @for (app of filteredApps(); track app.name_slug) {
+          <li
+            class="pd-app-option"
+            role="option"
+            (click)="selectApp(app)"
+            (keydown.enter)="selectApp(app)"
+            tabindex="0"
+          >
+            @if (app.img) {
+              <img [src]="app.img" [alt]="app.name" class="pd-app-icon" />
+            }
+            <span>{{ app.name }}</span>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (error()) {
+      <p class="pd-error">{{ error() }}</p>
+    }
+  }
+</div>

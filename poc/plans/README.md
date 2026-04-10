@@ -26,7 +26,8 @@ pipedream-connect-examples/
 
 ## After Implementing a Plan
 
-After each plan is implemented, update **[NEXT-STEPS.md](NEXT-STEPS.md)** with any manual actions that remain — credentials to fill in, external systems to configure, verification steps, etc. This keeps the implementor from hunting through plan files to figure out what still needs a human touch.
+1. **Write a summary** — create `PLAN-XX-summary.md` next to the plan file. Include: status, files created/modified, corrections made vs. the plan, design decisions, and any open issues. Then add a `[summary](PLAN-XX-summary.md)` link in the Notes column of the Execution Order table below.
+2. **Update NEXT-STEPS.md** — add any manual actions that remain — credentials to fill in, external systems to configure, verification steps, etc. This keeps the implementor from hunting through plan files to figure out what still needs a human touch.
 
 ## Execution Order
 
@@ -34,7 +35,7 @@ After each plan is implemented, update **[NEXT-STEPS.md](NEXT-STEPS.md)** with a
 |------|-------------|------------|-------|
 | [PLAN-01](PLAN-01-api-token-endpoint.md) | Add Pipedream token endpoint to Express API | — | |
 | [PLAN-02](PLAN-02-connect-angular-core.md) | Core library: services, DI tokens, provider | PLAN-01 (for context) | [summary](PLAN-02-summary.md) |
-| [PLAN-03](PLAN-03-selectors.md) | AppSelector and ComponentSelector components | PLAN-02 | |
+| [PLAN-03](PLAN-03-selectors.md) | AppSelector and ComponentSelector components | PLAN-02 | [summary](PLAN-03-summary.md) |
 | [PLAN-04](PLAN-04-component-form.md) | Dynamic ComponentForm (all prop types) | PLAN-02, PLAN-03 | |
 | [PLAN-05](PLAN-05-workflow-service.md) | Workflow data model + WorkflowService | PLAN-02 | |
 | [PLAN-06](PLAN-06-workflow-builder-ui.md) | Workflow Builder UI (visual graph) | PLAN-03, PLAN-04, PLAN-05 | |
