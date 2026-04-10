@@ -1,1 +1,13 @@
-export * from './lib/connect-angular/connect-angular';
+// Tokens
+export { PIPEDREAM_CONFIG } from './lib/tokens/pipedream-config.token';
+export type { PipedreamConnectConfig } from './lib/tokens/pipedream-config.token';
+export { CUSTOM_TRIGGERS, provideCustomTriggers } from './lib/tokens/custom-triggers.token';
+
+// Models
+export type { CustomTrigger, JsonSchema, JsonSchemaProperty } from './lib/models/custom-trigger.model';
+
+// Services
+export { PipedreamClientService } from './lib/services/pipedream-client.service';
+
+// Provider
+export { provideConnectAngular } from './lib/provide-connect-angular';

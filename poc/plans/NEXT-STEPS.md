@@ -29,4 +29,18 @@ This file tracks manual steps that cannot be automated by an AI agent (credentia
 
 ---
 
+## After PLAN-02 — connect-angular Core Services
+
+**Status:** Implemented. Types compile clean.
+
+### No manual action required
+
+All files are generated code with no external configuration dependencies. The library is ready for PLAN-03 to build on top of.
+
+### Known stub
+
+`PipedreamClientService.configureProps()` throws a `not implemented` error. It is intentionally left as a stub — the correct SDK call will be determined when implementing PLAN-04 (ComponentForm), which is the first consumer of dynamic props.
+
+---
+
 <!-- Add a new section here after each subsequent plan is implemented -->
