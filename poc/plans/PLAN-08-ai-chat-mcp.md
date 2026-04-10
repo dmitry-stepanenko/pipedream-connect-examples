@@ -1,258 +1,115 @@
-# PLAN-08 — Phase 2: AI Chat via Pipedream MCP
+# PLAN-08 — Phase 2: AI Chat via Hashbrown + Pipedream MCP
 
 ## Goal
 
-Add an AI chat panel to the workflow builder. The user describes what they want in natural language ("notify Slack when an order is created") and the AI assembles the workflow steps automatically, using Pipedream's MCP server to browse apps and components.
+Add an AI chat panel to the workflow builder using **Hashbrown** (`@hashbrownai/angular` + `@hashbrownai/anthropic`). The user describes what they want in natural language ("notify Slack when an order is created") and the AI assembles workflow steps automatically, using Pipedream's MCP server to browse apps and components.
 
 ## Context
 
-- Pipedream MCP server: `https://mcp.pipedream.com/developers`
-- MCP (Model Context Protocol) exposes Pipedream's catalog as AI tools — the AI can search apps, list actions, and understand component props
-- The AI backend (Claude via Anthropic API) runs server-side in `poc/apps/api/` — MCP keys must never reach the browser
-- On the frontend, the chat is a thin Angular component that sends messages to your API and receives structured workflow suggestions
+- **Hashbrown** is an open-source framework for embedding AI chat in Angular/React apps. It handles streaming, tool calling, and UI rendering out of the box.
+- Pipedream MCP server: `https://mcp.pipedream.com/{externalUserId}` — exposes Pipedream's catalog as MCP tools
+- The Express API (`poc/apps/api/`) acts as a **proxy** for both:
+  1. The LLM (Anthropic Claude) — hashbrown's `/api/chat` endpoint using `HashbrownAnthropic.stream.text()`
+  2. The MCP server — forwarding `/api/mcp` requests to Pipedream's MCP server (keeps credentials server-side)
+- On the Angular side, hashbrown's `uiChatResource` drives the chat. MCP tools are discovered dynamically via `@modelcontextprotocol/sdk` client connecting to the proxy, then passed as hashbrown tools.
 - PLAN-07 must be complete (full manual workflow builder working)
 
-## Prerequisites
+## Reference Samples
 
-PLAN-01 through PLAN-07 must be completed. The manual workflow builder must be working end-to-end.
+All patterns are taken from the hashbrown repo at `/Users/dmitry/projects/forks/hashbrown/samples/`:
+
+| Pattern | Sample | Key files |
+|---------|--------|-----------|
+| Angular chat with `uiChatResource` | `smart-home/angular/` | `app/chat/chat-panel.ts`, `app/chat/tools/*.ts` |
+| Server-side `HashbrownAnthropic` streaming | (adapt from `smart-home/server/src/main.ts` using Anthropic instead of OpenAI) | `packages/anthropic/src/stream/text.fn.ts` |
+| MCP client connecting to server, creating tools | `spotify/angular/` | `app/services/mcp-server.ts` |
+| MCP proxy server endpoints | `spotify/server/` | `src/main.ts` (POST/GET/DELETE `/mcp`) |
+| Chat messages rendering | `smart-home/angular/` | `app/chat/chat-messages.ts`, `app/chat/composer.ts` |
+| App config with `provideHashbrown` | `smart-home/angular/` | `app/app.config.ts` |
 
 ---
 
 ## Architecture
 
 ```
-Angular Chat UI
-     │
-     │  POST /api/chat  { messages: [...], workflowContext: {...} }
-     ▼
-Express API (poc/apps/api/)
-     │
-     ├── Anthropic SDK (claude-sonnet-4-x)
-     │   └── system prompt with workflow builder instructions
-     │
-     └── Pipedream MCP tools (via @anthropic-ai/mcp-server-sdk or HTTP)
-         └── https://mcp.pipedream.com/developers
-              ├── search_apps(query)
-              ├── list_actions(app)
-              ├── list_triggers(app)
-              ├── get_component(key)
-              └── ... (see MCP server docs)
+Angular App (myapp)
+  ├── provideHashbrown({ baseUrl: 'http://localhost:3333/api/chat' })
+  ├── PipedreamMcpService
+  │     └── MCP Client → http://localhost:3333/api/mcp  (proxy)
+  │           └── listTools() → createTool() for each MCP tool
+  └── ChatPanelComponent
+        └── uiChatResource({
+              model: 'claude-sonnet-4-20250514',
+              tools: [...mcpTools, ...workflowTools],
+              components: [Markdown, WorkflowSuggestionCard],
+            })
+
+Express API (api)
+  ├── POST /api/chat        → HashbrownAnthropic.stream.text() → Anthropic API
+  ├── POST /api/mcp         → proxy to https://mcp.pipedream.com/{userId}
+  ├── GET  /api/mcp          → proxy (SSE notifications)
+  └── DELETE /api/mcp        → proxy (session cleanup)
 ```
 
-The AI returns either:
-- A plain text response (for clarifying questions)
-- A structured `WorkflowSuggestion` JSON object (when it has enough info to build the workflow)
+**How tool calling works in hashbrown:**
+1. `uiChatResource` sends messages to `/api/chat`
+2. Server streams LLM response back (including tool_use blocks)
+3. Hashbrown client intercepts tool calls, executes them locally (client-side)
+4. Tool results are sent back to `/api/chat` → LLM continues
+5. This loop repeats until the LLM returns a final text/UI response
 
 ---
 
-## Step 1 — Read Pipedream MCP documentation
-
-Before implementing, fetch and read the MCP server docs:
-
-```
-https://mcp.pipedream.com/developers
-```
-
-Key things to find:
-1. What tools are exposed (names, input schemas, output schemas)
-2. Authentication requirements (API key? OAuth?)
-3. Whether it's an SSE-based MCP server or HTTP tools
-4. Rate limits
-
----
-
-## Step 2 — Install dependencies in API
+## Step 1 — Install dependencies
 
 ```bash
-# From poc/
-npm install @anthropic-ai/sdk
+cd poc
+
+# Server-side: Anthropic provider for hashbrown
+npm install @hashbrownai/core @hashbrownai/anthropic @anthropic-ai/sdk
+
+# Angular-side: hashbrown Angular + MCP client SDK
+npm install @hashbrownai/angular @modelcontextprotocol/sdk
+
+# Markdown rendering (used by hashbrown's exposeMarkdown pattern)
+npm install ngx-markdown marked
 ```
 
-If Pipedream MCP requires a dedicated client package, install it too (check docs from Step 1).
+Note: `@hashbrownai/core` is a peer dependency of both `@hashbrownai/angular` and `@hashbrownai/anthropic`.
 
 ---
 
-## Step 3 — Add `/api/chat` endpoint to Express
+## Step 2 — Add `/api/chat` endpoint (hashbrown LLM proxy)
 
-Add to `poc/apps/api/src/main.ts` (or a separate router file `poc/apps/api/src/routes/chat.ts`):
+Add to `poc/apps/api/src/main.ts`:
 
 ```typescript
-import Anthropic from '@anthropic-ai/sdk';
+import { HashbrownAnthropic } from '@hashbrownai/anthropic';
+import { Chat } from '@hashbrownai/core';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const { ANTHROPIC_API_KEY } = process.env;
 
-// TODO: Replace with actual MCP tool definitions from https://mcp.pipedream.com/developers
-// Each tool should map to an MCP server capability
-const pipedreamMcpTools: Anthropic.Tool[] = [
-  {
-    name: 'search_apps',
-    description: 'Search Pipedream apps by name or category',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Search term' },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'list_actions',
-    description: 'List available actions for a Pipedream app',
-    input_schema: {
-      type: 'object',
-      properties: {
-        app: { type: 'string', description: 'App name slug, e.g. "slack"' },
-      },
-      required: ['app'],
-    },
-  },
-  {
-    name: 'list_triggers',
-    description: 'List available triggers for a Pipedream app',
-    input_schema: {
-      type: 'object',
-      properties: {
-        app: { type: 'string', description: 'App name slug' },
-      },
-      required: ['app'],
-    },
-  },
-  {
-    name: 'get_component',
-    description: 'Get detailed information about a specific component including its configurable props',
-    input_schema: {
-      type: 'object',
-      properties: {
-        key: { type: 'string', description: 'Component key, e.g. "slack_v2-send-message-to-channel"' },
-      },
-      required: ['key'],
-    },
-  },
-];
-
-async function callMcpTool(name: string, input: Record<string, unknown>): Promise<unknown> {
-  // TODO: implement actual MCP tool calls based on the server documentation
-  // This will either be HTTP calls to https://mcp.pipedream.com or
-  // using an MCP client SDK if one is available
-  throw new Error(`MCP tool ${name} not yet implemented`);
-}
-
-const SYSTEM_PROMPT = `
-You are a workflow automation assistant. You help users build automated workflows using Pipedream integrations and custom internal triggers.
-
-A workflow consists of:
-1. A trigger (first step) — either a custom internal event (like "Order Created") or a Pipedream app trigger
-2. One or more actions — Pipedream app actions (send Slack message, create calendar event, etc.)
-
-When the user describes a workflow, use the available tools to:
-1. Find the right apps and components
-2. Return a structured WorkflowSuggestion
-
-Custom triggers available in this app:
-{{CUSTOM_TRIGGERS}}
-
-When you have enough information to suggest a workflow, respond with a JSON object in this exact format:
-\`\`\`json
-{
-  "type": "workflow_suggestion",
-  "name": "Human readable workflow name",
-  "steps": [
-    {
-      "type": "trigger",
-      "source": "custom",
-      "customTriggerId": "order.created"
-    },
-    {
-      "type": "action",
-      "source": "pipedream",
-      "appSlug": "slack",
-      "componentKey": "slack_v2-send-message-to-channel",
-      "suggestedConfig": {
-        "channel": "#orders",
-        "text": "New order {{orderId}} received!"
-      }
-    }
-  ]
-}
-\`\`\`
-
-If you need clarification, ask a concise question. Keep responses short and focused.
-`;
-
+// POST /api/chat — hashbrown streaming proxy to Anthropic
 app.post('/api/chat', async (req, res) => {
-  const { messages, customTriggers = [] } = req.body;
-
-  if (!Array.isArray(messages)) {
-    res.status(400).json({ error: 'messages array required' });
+  if (!ANTHROPIC_API_KEY) {
+    res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     return;
   }
 
-  const systemPrompt = SYSTEM_PROMPT.replace(
-    '{{CUSTOM_TRIGGERS}}',
-    JSON.stringify(customTriggers, null, 2)
-  );
+  const completionParams = req.body as Chat.Api.CompletionCreateParams;
 
-  try {
-    // Agentic loop — handle tool calls
-    let currentMessages = [...messages];
-    let finalResponse: string | null = null;
+  const response = HashbrownAnthropic.stream.text({
+    apiKey: ANTHROPIC_API_KEY,
+    request: completionParams,
+  });
 
-    while (true) {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        system: systemPrompt,
-        tools: pipedreamMcpTools,
-        messages: currentMessages,
-      });
+  res.header('Content-Type', 'application/octet-stream');
 
-      if (response.stop_reason === 'end_turn') {
-        const textBlock = response.content.find((b) => b.type === 'text');
-        finalResponse = textBlock?.type === 'text' ? textBlock.text : '';
-        break;
-      }
-
-      if (response.stop_reason === 'tool_use') {
-        // Process tool calls
-        const toolResults: Anthropic.MessageParam = {
-          role: 'user',
-          content: await Promise.all(
-            response.content
-              .filter((b) => b.type === 'tool_use')
-              .map(async (b) => {
-                if (b.type !== 'tool_use') return null!;
-                let result: unknown;
-                try {
-                  result = await callMcpTool(b.name, b.input as Record<string, unknown>);
-                } catch (e) {
-                  result = { error: String(e) };
-                }
-                return {
-                  type: 'tool_result' as const,
-                  tool_use_id: b.id,
-                  content: JSON.stringify(result),
-                };
-              })
-          ),
-        };
-
-        currentMessages = [
-          ...currentMessages,
-          { role: 'assistant' as const, content: response.content },
-          toolResults,
-        ];
-      } else {
-        break;
-      }
-    }
-
-    res.json({ response: finalResponse });
-  } catch (err) {
-    console.error('Chat error:', err);
-    res.status(500).json({ error: 'Chat request failed' });
+  for await (const chunk of response) {
+    res.write(chunk);
   }
+
+  res.end();
 });
 ```
 
@@ -261,219 +118,658 @@ Add to `.env`:
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+This endpoint is a thin proxy — hashbrown on the client sends `Chat.Api.CompletionCreateParams`, the server forwards to Anthropic and streams binary frames back. No tool logic lives here; tools execute client-side.
+
 ---
 
-## Step 4 — Angular `ChatPanelComponent`
+## Step 3 — Add `/api/mcp` proxy endpoints
 
-Create `poc/libs/connect-angular/src/lib/components/chat-panel/chat-panel.ts`:
+Add MCP proxy routes to `poc/apps/api/src/main.ts`. These relay MCP HTTP transport requests from the browser to Pipedream's MCP server, attaching the necessary credentials.
 
 ```typescript
-import { Component, signal, inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+
+// Or implement manually with fetch:
+
+// The Pipedream MCP server URL includes the external user ID.
+// The Angular app passes it as a query parameter: /api/mcp?externalUserId=xxx
+// The proxy strips it and forwards to https://mcp.pipedream.com/{externalUserId}
+
+app.post('/api/mcp', async (req, res) => {
+  const externalUserId = req.query.externalUserId as string;
+  if (!externalUserId) {
+    res.status(400).json({ error: 'externalUserId query parameter required' });
+    return;
+  }
+
+  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
+  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (sessionId) {
+      headers['Mcp-Session-Id'] = sessionId;
+    }
+
+    const upstream = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(req.body),
+    });
+
+    // Forward the session ID header back
+    const upstreamSessionId = upstream.headers.get('Mcp-Session-Id');
+    if (upstreamSessionId) {
+      res.setHeader('Mcp-Session-Id', upstreamSessionId);
+    }
+
+    res.status(upstream.status);
+    const body = await upstream.text();
+    res.send(body);
+  } catch (err) {
+    console.error('MCP proxy error:', err);
+    res.status(502).json({ error: 'MCP proxy request failed' });
+  }
+});
+
+app.get('/api/mcp', async (req, res) => {
+  const externalUserId = req.query.externalUserId as string;
+  if (!externalUserId) {
+    res.status(400).json({ error: 'externalUserId query parameter required' });
+    return;
+  }
+
+  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
+  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+  try {
+    const headers: Record<string, string> = {};
+    if (sessionId) {
+      headers['Mcp-Session-Id'] = sessionId;
+    }
+
+    const upstream = await fetch(targetUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    const upstreamSessionId = upstream.headers.get('Mcp-Session-Id');
+    if (upstreamSessionId) {
+      res.setHeader('Mcp-Session-Id', upstreamSessionId);
+    }
+
+    // Forward SSE content type if present
+    const contentType = upstream.headers.get('Content-Type');
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
+
+    res.status(upstream.status);
+    const body = await upstream.text();
+    res.send(body);
+  } catch (err) {
+    console.error('MCP proxy error:', err);
+    res.status(502).json({ error: 'MCP proxy request failed' });
+  }
+});
+
+app.delete('/api/mcp', async (req, res) => {
+  const externalUserId = req.query.externalUserId as string;
+  if (!externalUserId) {
+    res.status(400).json({ error: 'externalUserId query parameter required' });
+    return;
+  }
+
+  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
+  const sessionId = req.headers['mcp-session-id'] as string;
+
+  try {
+    const headers: Record<string, string> = {};
+    if (sessionId) {
+      headers['Mcp-Session-Id'] = sessionId;
+    }
+
+    const upstream = await fetch(targetUrl, {
+      method: 'DELETE',
+      headers,
+    });
+
+    res.sendStatus(upstream.status);
+  } catch (err) {
+    console.error('MCP proxy error:', err);
+    res.status(502).json({ error: 'MCP proxy cleanup failed' });
+  }
+});
+```
+
+**Important**: Check the actual Pipedream MCP server URL format and auth requirements at `https://mcp.pipedream.com/developers` before implementing. The URL pattern and auth headers may differ — adjust accordingly.
+
+---
+
+## Step 4 — `PipedreamMcpService` (Angular)
+
+Create `poc/libs/connect-angular/src/lib/services/pipedream-mcp.service.ts`.
+
+This follows the same pattern as `hashbrown/samples/spotify/angular/src/app/services/mcp-server.ts`:
+
+```typescript
+import { inject, Injectable, Injector, runInInjectionContext, signal } from '@angular/core';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Chat } from '@hashbrownai/core';
+import { createTool } from '@hashbrownai/angular';
+import { PIPEDREAM_CONFIG } from '../tokens/pipedream-config.token';
+
+@Injectable({ providedIn: 'root' })
+export class PipedreamMcpService {
+  private readonly config = inject(PIPEDREAM_CONFIG);
+  private readonly injector = inject(Injector);
+  private client?: Client;
+
+  readonly connected = signal(false);
+  readonly tools = signal<Chat.AnyTool[]>([]);
+
+  async connect() {
+    this.client = new Client({
+      name: 'pipedream',
+      version: '1.0.0',
+    });
+
+    // Derive API base from token endpoint URL
+    const apiBase = this.config.tokenEndpointUrl.replace('/api/pipedream/token', '');
+    const mcpUrl = new URL(`${apiBase}/api/mcp?externalUserId=${encodeURIComponent(this.config.externalUserId)}`);
+
+    await this.client.connect(
+      new StreamableHTTPClientTransport(mcpUrl),
+    );
+
+    const { tools: mcpTools } = await this.client.listTools();
+
+    const tools = mcpTools.map((tool) => {
+      return runInInjectionContext(this.injector, () => {
+        return createTool({
+          name: tool.name,
+          description: tool.description ?? '',
+          schema: {
+            ...tool.inputSchema,
+            additionalProperties: false,
+            required: Object.keys(tool.inputSchema.properties ?? {}),
+          },
+          handler: async (input) => {
+            const result = await this.client?.callTool({
+              name: tool.name,
+              arguments: input,
+            });
+            return result;
+          },
+        });
+      });
+    });
+
+    this.tools.set(tools);
+    this.connected.set(true);
+  }
+
+  async disconnect() {
+    if (this.client) {
+      await this.client.close();
+      this.client = undefined;
+      this.connected.set(false);
+      this.tools.set([]);
+    }
+  }
+}
+```
+
+---
+
+## Step 5 — `ChatPanelComponent` (Angular)
+
+Create `poc/libs/connect-angular/src/lib/components/chat-panel/chat-panel.ts`.
+
+Uses `uiChatResource` from hashbrown. MCP tools are provided by `PipedreamMcpService`, and additional client-side tools interact with `WorkflowService`.
+
+```typescript
+import { Component, computed, effect, ElementRef, inject, input, viewChild } from '@angular/core';
+import { exposeComponent, RenderMessageComponent, uiChatResource, createTool, UiChatMessage } from '@hashbrownai/angular';
+import { prompt, s } from '@hashbrownai/core';
+import { PipedreamMcpService } from '../../services/pipedream-mcp.service';
 import { WorkflowService } from '../../services/workflow.service';
 import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
-import { PIPEDREAM_CONFIG } from '../../tokens/pipedream-config.token';
-import { PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
+// --- Exposed components for the AI to render ---
+
+@Component({
+  selector: 'pd-chat-markdown',
+  standalone: true,
+  template: `<div [innerHTML]="data()"></div>`,
+  styles: [`:host { display: block; } :host ::ng-deep p { margin: 0 0 8px; }`],
+})
+export class ChatMarkdown {
+  data = input.required<string>();
 }
 
-interface WorkflowSuggestion {
-  type: 'workflow_suggestion';
-  name: string;
-  steps: Array<{
-    type: 'trigger' | 'action';
-    source: 'custom' | 'pipedream';
-    customTriggerId?: string;
-    appSlug?: string;
-    componentKey?: string;
-    suggestedConfig?: Record<string, unknown>;
-  }>;
+@Component({
+  selector: 'pd-workflow-suggestion-card',
+  standalone: true,
+  template: `
+    <div class="suggestion-card">
+      <strong>{{ name() }}</strong>
+      <p>{{ description() }}</p>
+    </div>
+  `,
+  styles: [`
+    .suggestion-card {
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 12px;
+      background: #f0fdf4;
+    }
+  `],
+})
+export class WorkflowSuggestionCard {
+  name = input.required<string>();
+  description = input.required<string>();
 }
+
+// --- Main chat panel ---
 
 @Component({
   selector: 'pd-chat-panel',
   standalone: true,
-  imports: [FormsModule],
-  templateUrl: './chat-panel.html',
-  styleUrl: './chat-panel.css',
+  imports: [RenderMessageComponent],
+  template: `
+    <div class="pd-chat-panel">
+      <div class="pd-chat-messages" #scrollContainer>
+        @for (msg of chat.value(); track $index) {
+          @switch (msg.role) {
+            @case ('user') {
+              <div class="pd-msg pd-msg--user">
+                <div class="pd-bubble">{{ msg.content }}</div>
+              </div>
+            }
+            @case ('assistant') {
+              <div class="pd-msg pd-msg--assistant">
+                @if (msg.content) {
+                  <hb-render-message [message]="msg" />
+                }
+              </div>
+            }
+            @case ('error') {
+              <div class="pd-msg pd-msg--error">
+                {{ msg.content }}
+                <button type="button" (click)="retryMessages()">Retry</button>
+              </div>
+            }
+          }
+        }
+        @if (chat.isLoading()) {
+          <div class="pd-msg pd-msg--assistant">
+            <div class="pd-bubble pd-bubble--loading">Thinking...</div>
+          </div>
+        }
+      </div>
+
+      <div class="pd-chat-input-row">
+        <textarea
+          #inputEl
+          class="pd-chat-input"
+          placeholder="Describe a workflow... (e.g. 'When an order is created, send a Slack message')"
+          rows="1"
+          (keydown.enter)="onEnter($event, inputEl)"
+        ></textarea>
+        <button
+          type="button"
+          class="pd-btn pd-btn--primary"
+          [disabled]="chat.isLoading()"
+          (click)="onSend(inputEl)"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .pd-chat-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .pd-chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .pd-msg--user {
+      align-self: flex-end;
+      max-width: 80%;
+    }
+    .pd-msg--assistant {
+      align-self: flex-start;
+      max-width: 90%;
+    }
+    .pd-msg--error {
+      color: #dc2626;
+      padding: 8px;
+      background: #fef2f2;
+      border-radius: 6px;
+    }
+    .pd-bubble {
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: #f3f4f6;
+      line-height: 1.4;
+    }
+    .pd-msg--user .pd-bubble {
+      background: #3b82f6;
+      color: white;
+    }
+    .pd-bubble--loading {
+      color: #6b7280;
+      font-style: italic;
+    }
+    .pd-chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .pd-chat-input {
+      flex: 1;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px 12px;
+      resize: none;
+      font: inherit;
+    }
+    .pd-btn--primary {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+    .pd-btn--primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  `],
 })
 export class ChatPanelComponent {
-  protected readonly messages = signal<ChatMessage[]>([]);
-  protected readonly input = signal('');
-  protected readonly loading = signal(false);
-  protected readonly suggestion = signal<WorkflowSuggestion | null>(null);
-
+  private readonly mcpService = inject(PipedreamMcpService);
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
-  private readonly config = inject(PIPEDREAM_CONFIG);
+  private readonly scrollContainer = viewChild.required<ElementRef<HTMLDivElement>>('scrollContainer');
 
-  private get apiBase(): string {
-    // Derive API base from token endpoint URL (strip /api/pipedream/token)
-    return this.config.tokenEndpointUrl.replace('/api/pipedream/token', '');
-  }
-
-  protected async send() {
-    const userInput = this.input().trim();
-    if (!userInput || this.loading()) return;
-
-    const userMessage: ChatMessage = { role: 'user', content: userInput };
-    this.messages.update((msgs) => [...msgs, userMessage]);
-    this.input.set('');
-    this.loading.set(true);
-    this.suggestion.set(null);
-
-    try {
-      const response = await fetch(`${this.apiBase}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: this.messages(),
-          customTriggers: this.customTriggers,
-        }),
+  constructor() {
+    // Auto-scroll when messages change
+    effect(() => {
+      this.chat.value();
+      requestAnimationFrame(() => {
+        const el = this.scrollContainer().nativeElement;
+        el.scrollTop = el.scrollHeight;
       });
-
-      const data = await response.json();
-      const assistantText: string = data.response ?? '';
-
-      this.messages.update((msgs) => [
-        ...msgs,
-        { role: 'assistant', content: assistantText },
-      ]);
-
-      // Try to parse a WorkflowSuggestion from the response
-      const jsonMatch = assistantText.match(/```json\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[1]);
-          if (parsed.type === 'workflow_suggestion') {
-            this.suggestion.set(parsed);
-          }
-        } catch {
-          // Not valid JSON — plain text response
-        }
-      }
-    } catch {
-      this.messages.update((msgs) => [
-        ...msgs,
-        { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' },
-      ]);
-    } finally {
-      this.loading.set(false);
-    }
+    });
   }
 
-  protected applySuggestion() {
-    const s = this.suggestion();
-    if (!s) return;
+  // Client-side tool: create a workflow from the AI's suggestion
+  private readonly createWorkflowTool = createTool({
+    name: 'create_workflow',
+    description: 'Create a new workflow with the given name. Returns the workflow ID.',
+    schema: s.object('CreateWorkflowInput', {
+      name: s.string('The name of the workflow'),
+    }),
+    handler: (input) => {
+      const workflow = this.workflowService.createWorkflow(input.name);
+      return Promise.resolve({ workflowId: workflow.id });
+    },
+  });
 
-    const workflow = this.workflowService.createWorkflow(s.name);
+  // Client-side tool: add a step to the active workflow
+  private readonly addStepTool = createTool({
+    name: 'add_workflow_step',
+    description: 'Add a new action step to the specified workflow. Returns the step ID.',
+    schema: s.object('AddStepInput', {
+      workflowId: s.string('The workflow ID'),
+    }),
+    handler: (input) => {
+      const step = this.workflowService.addStep(input.workflowId);
+      return Promise.resolve({ stepId: step.id });
+    },
+  });
 
-    // The workflow was created with one empty trigger step — configure each step from suggestion
-    s.steps.forEach((suggestedStep, index) => {
-      if (index === 0) {
-        // Configure the trigger step that was auto-created
-        if (suggestedStep.source === 'custom' && suggestedStep.customTriggerId) {
-          const data: CustomTriggerStep = {
-            source: 'custom',
-            customTriggerId: suggestedStep.customTriggerId,
-          };
-          this.workflowService.configureStep(workflow.id, workflow.steps[0].id, data);
-        }
-        // Pipedream trigger: addStep then configure (needs app+component lookup — omit for now)
-      } else {
-        // Add and configure action steps
-        const newStep = this.workflowService.addStep(workflow.id);
-        if (suggestedStep.source === 'custom' && suggestedStep.customTriggerId) {
-          const data: CustomTriggerStep = {
-            source: 'custom',
-            customTriggerId: suggestedStep.customTriggerId,
-          };
-          this.workflowService.configureStep(workflow.id, newStep.id, data);
-        }
-        // Note: Pipedream steps need app+component objects fetched from SDK before applying.
-        // For a complete implementation, fetch the app and component here and then call
-        // configureStep with a PipedreamStep. The suggestedConfig becomes configuredProps.
-      }
-    });
+  // Client-side tool: list available custom triggers
+  private readonly listCustomTriggersTool = createTool({
+    name: 'list_custom_triggers',
+    description: 'List custom triggers available in this application (non-Pipedream, internal event triggers).',
+    handler: () => {
+      return Promise.resolve(this.customTriggers);
+    },
+  });
 
-    this.suggestion.set(null);
+  protected readonly allTools = computed(() => [
+    ...this.mcpService.tools(),
+    this.createWorkflowTool,
+    this.addStepTool,
+    this.listCustomTriggersTool,
+  ]);
+
+  chat = uiChatResource({
+    model: 'claude-sonnet-4-20250514',
+    debugName: 'workflow-chat',
+    system: prompt`
+      ### ROLE & TONE
+      You are **Workflow Builder Assistant**, a concise AI that helps users
+      build automated workflows using Pipedream integrations and custom triggers.
+
+      ### WHAT YOU CAN DO
+      - Search for Pipedream apps and components using the available MCP tools
+      - Create workflows and add steps using the workflow tools
+      - List the user's custom (internal) triggers
+
+      ### RULES
+      1. When the user describes a workflow, use tools to find the right apps/components first.
+      2. Use create_workflow and add_workflow_step to actually build the workflow.
+      3. Use list_custom_triggers to check available internal event triggers.
+      4. Keep responses short and actionable.
+      5. If you need clarification, ask a concise question.
+      6. Show a summary of what you built using the workflow-suggestion-card component.
+
+      ### EXAMPLES
+
+      <user>Send a Slack message when an order is created</user>
+      <assistant>
+        <tool-call>list_custom_triggers</tool-call>
+      </assistant>
+      <assistant>
+        <ui>
+          <pd-chat-markdown data="I found an **Order Created** custom trigger and I can pair it with Slack. Let me set that up." />
+          <pd-workflow-suggestion-card
+            name="Order → Slack Notification"
+            description="Triggers on Order Created, sends a Slack message to a channel of your choice."
+          />
+        </ui>
+      </assistant>
+    `,
+    components: [
+      exposeComponent(ChatMarkdown, {
+        description: 'Show markdown text to the user',
+        input: {
+          data: s.streaming.string('The markdown content'),
+        },
+      }),
+      exposeComponent(WorkflowSuggestionCard, {
+        description: 'Show a workflow suggestion card summarizing a workflow that was created or proposed',
+        input: {
+          name: s.string('Workflow name'),
+          description: s.streaming.string('Short description of what the workflow does'),
+        },
+      }),
+    ],
+    tools: this.allTools,
+  });
+
+  sendMessage(message: string) {
+    this.chat.sendMessage({ role: 'user', content: message });
+  }
+
+  retryMessages() {
+    this.chat.resendMessages();
+  }
+
+  protected onEnter(event: Event, textarea: HTMLTextAreaElement) {
+    const ke = event as KeyboardEvent;
+    if (ke.shiftKey) return; // allow Shift+Enter for newlines
+    ke.preventDefault();
+    this.onSend(textarea);
+  }
+
+  protected onSend(textarea: HTMLTextAreaElement) {
+    const value = textarea.value.trim();
+    if (!value || this.chat.isLoading()) return;
+    this.sendMessage(value);
+    textarea.value = '';
   }
 }
 ```
 
-### `chat-panel.html`
-
-```html
-<div class="pd-chat-panel">
-  <div class="pd-chat-messages" #scrollContainer>
-    @for (msg of messages(); track $index) {
-      <div class="pd-chat-message pd-chat-message--{{ msg.role }}">
-        <div class="pd-chat-bubble">{{ msg.content }}</div>
-      </div>
-    }
-    @if (loading()) {
-      <div class="pd-chat-message pd-chat-message--assistant">
-        <div class="pd-chat-bubble pd-chat-bubble--loading">Thinking...</div>
-      </div>
-    }
-  </div>
-
-  @if (suggestion()) {
-    <div class="pd-suggestion-banner">
-      <p>I've drafted a workflow: <strong>{{ suggestion()!.name }}</strong></p>
-      <button type="button" class="pd-btn pd-btn--primary" (click)="applySuggestion()">
-        Apply to Builder
-      </button>
-    </div>
-  }
-
-  <form class="pd-chat-input-row" (ngSubmit)="send()">
-    <input
-      type="text"
-      class="pd-chat-input"
-      placeholder="Describe a workflow... (e.g. 'When an order is created, send a Slack message')"
-      [ngModel]="input()"
-      (ngModelChange)="input.set($event)"
-      name="chat-input"
-      [disabled]="loading()"
-      autocomplete="off"
-    />
-    <button
-      type="submit"
-      class="pd-btn pd-btn--primary"
-      [disabled]="loading() || !input().trim()"
-    >
-      Send
-    </button>
-  </form>
-</div>
-```
-
 ---
 
-## Step 5 — Add chat panel to myapp
+## Step 6 — Configure `provideHashbrown` in myapp
 
-In `AppComponent` (PLAN-07), add the chat toggle:
+Update `poc/apps/myapp/src/app/app.config.ts` to add hashbrown provider:
 
 ```typescript
-import { ChatPanelComponent } from '@poc/connect-angular';
+import { provideHashbrown } from '@hashbrownai/angular';
 
-// In template:
-// Add a toggle button in the header and conditionally show <pd-chat-panel>
+// Add to providers array:
+provideHashbrown({ baseUrl: 'http://localhost:3333/api/chat' }),
 ```
 
-The simplest integration: add a collapsible chat panel at the bottom of `.app-main`, toggled by a button.
+The `baseUrl` points to the Express API's `/api/chat` endpoint from Step 2.
 
 ---
 
-## Step 6 — Export from library
+## Step 7 — Wire chat panel into myapp
+
+Update `poc/apps/myapp/src/app/app.ts` to add a collapsible chat panel and trigger MCP connection on startup:
+
+```typescript
+import { Component, inject, OnInit, signal } from '@angular/core';
+import {
+  WorkflowListComponent,
+  WorkflowBuilderComponent,
+  ChatPanelComponent,
+  PipedreamMcpService,
+} from '@poc/connect-angular';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [WorkflowListComponent, WorkflowBuilderComponent, ChatPanelComponent],
+  template: `
+    <div class="app-layout">
+      <aside class="app-sidebar">
+        <h1 class="app-logo">Workflow Builder</h1>
+        <pd-workflow-list (open)="onWorkflowOpen($event)" />
+      </aside>
+
+      <main class="app-main">
+        <pd-workflow-builder />
+      </main>
+
+      @if (chatOpen()) {
+        <aside class="app-chat">
+          <pd-chat-panel />
+        </aside>
+      }
+
+      <button class="chat-toggle" (click)="chatOpen.update(v => !v)">
+        {{ chatOpen() ? '✕' : 'AI Chat' }}
+      </button>
+    </div>
+  `,
+  styles: [`
+    .app-layout {
+      display: flex;
+      height: 100vh;
+      font-family: system-ui, sans-serif;
+    }
+    .app-sidebar {
+      width: 280px;
+      border-right: 1px solid #e5e7eb;
+      padding: 16px;
+      overflow-y: auto;
+      background: #f9fafb;
+    }
+    .app-logo {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 24px;
+      color: #111827;
+    }
+    .app-main {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+    .app-chat {
+      width: 400px;
+      border-left: 1px solid #e5e7eb;
+    }
+    .chat-toggle {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 24px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      z-index: 100;
+    }
+  `],
+})
+export class App implements OnInit {
+  private readonly mcpService = inject(PipedreamMcpService);
+
+  protected readonly chatOpen = signal(false);
+
+  async ngOnInit() {
+    try {
+      await this.mcpService.connect();
+    } catch (err) {
+      console.warn('MCP connection failed (chat tools will be unavailable):', err);
+    }
+  }
+
+  protected onWorkflowOpen(_id: string) {
+    // WorkflowService already tracks the active workflow via setActiveWorkflow()
+  }
+}
+```
+
+---
+
+## Step 8 — Export from library
 
 Add to `poc/libs/connect-angular/src/index.ts`:
 
 ```typescript
+export { PipedreamMcpService } from './lib/services/pipedream-mcp.service';
 export { ChatPanelComponent } from './lib/components/chat-panel/chat-panel';
 ```
 
@@ -483,20 +779,22 @@ export { ChatPanelComponent } from './lib/components/chat-panel/chat-panel';
 
 | File | Action |
 |------|--------|
-| `poc/apps/api/src/main.ts` | Add `/api/chat` endpoint |
+| `poc/package.json` | Add `@hashbrownai/core`, `@hashbrownai/angular`, `@hashbrownai/anthropic`, `@anthropic-ai/sdk`, `@modelcontextprotocol/sdk`, `ngx-markdown`, `marked` |
+| `poc/apps/api/src/main.ts` | Add `/api/chat` (hashbrown LLM proxy) and `/api/mcp` (MCP proxy) endpoints |
 | `poc/apps/api/.env` | Add `ANTHROPIC_API_KEY` |
-| `poc/libs/connect-angular/src/lib/components/chat-panel/chat-panel.ts` | Create |
-| `poc/libs/connect-angular/src/lib/components/chat-panel/chat-panel.html` | Create |
-| `poc/libs/connect-angular/src/lib/components/chat-panel/chat-panel.css` | Create |
-| `poc/libs/connect-angular/src/index.ts` | Append export |
-| `poc/apps/myapp/src/app/app.ts` | Add chat panel toggle |
-| `poc/package.json` | Added `@anthropic-ai/sdk` |
+| `poc/libs/connect-angular/src/lib/services/pipedream-mcp.service.ts` | Create — MCP client service |
+| `poc/libs/connect-angular/src/lib/components/chat-panel/chat-panel.ts` | Create — chat panel with `uiChatResource` |
+| `poc/libs/connect-angular/src/index.ts` | Append exports |
+| `poc/apps/myapp/src/app/app.config.ts` | Add `provideHashbrown()` |
+| `poc/apps/myapp/src/app/app.ts` | Add chat panel toggle, MCP init |
 
 ---
 
 ## Notes
 
-- The `callMcpTool()` implementation is the critical missing piece — it depends on what Pipedream's MCP server exposes. Read `https://mcp.pipedream.com/developers` first and implement accordingly
-- The `applySuggestion()` method handles custom trigger steps fully but only sketches Pipedream steps (it needs app+component objects, which require SDK calls). Complete it by injecting `PipedreamClientService` and fetching the app/component by `appSlug` and `componentKey` before calling `configureStep`
-- The AI can suggest prop values (`suggestedConfig`) but these are strings that reference trigger payload fields (e.g. `{{orderId}}`). Rendering these as literal values in `configuredProps` will work for the demo; a full implementation would use a template variable system
-- Consider rate-limiting `/api/chat` — Claude API calls are not free
+- **MCP URL format**: The proxy assumes `https://mcp.pipedream.com/{externalUserId}`. Read `https://mcp.pipedream.com/developers` first to verify the actual URL pattern and any required auth headers (API key, OAuth token, etc.). Adjust the proxy accordingly.
+- **Model**: Uses `claude-sonnet-4-20250514` via `HashbrownAnthropic`. Change model string as needed.
+- **Tool execution is client-side**: hashbrown sends tool call requests back to the Angular app, which executes them (MCP tools call the proxy, workflow tools call `WorkflowService` directly). The server only proxies the LLM stream.
+- **No Material dependencies**: Unlike the hashbrown smart-home sample, this plan avoids `@angular/material` to stay consistent with the existing POC style. The chat UI uses plain HTML/CSS.
+- **`ngx-markdown`**: Optional — only needed if you want the `ChatMarkdown` component to render actual markdown. For a simpler start, the `innerHTML` binding works for basic text. For production, use `ngx-markdown`'s `MarkdownComponent` or hashbrown's `exposeMarkdown` helper.
+- **Streaming**: hashbrown handles streaming automatically. The server writes binary frames (`application/octet-stream`), the client decodes them via the built-in HTTP transport. No SSE or WebSocket setup needed.
