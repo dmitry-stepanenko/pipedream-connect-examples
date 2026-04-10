@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import * as path from 'path';
-import { createBackendClient } from '@pipedream/sdk/server';
+import { PipedreamClient } from '@pipedream/sdk/server';
 
 const {
   PIPEDREAM_CLIENT_ID,
@@ -18,13 +18,11 @@ if (!PIPEDREAM_CLIENT_ID || !PIPEDREAM_CLIENT_SECRET || !PIPEDREAM_PROJECT_ID) {
   process.exit(1);
 }
 
-const pd = createBackendClient({
+const pd = new PipedreamClient({
   projectId: PIPEDREAM_PROJECT_ID,
-  environment: PIPEDREAM_PROJECT_ENVIRONMENT as 'development' | 'production',
-  credentials: {
-    clientId: PIPEDREAM_CLIENT_ID,
-    clientSecret: PIPEDREAM_CLIENT_SECRET,
-  },
+  projectEnvironment: PIPEDREAM_PROJECT_ENVIRONMENT as 'development' | 'production',
+  clientId: PIPEDREAM_CLIENT_ID,
+  clientSecret: PIPEDREAM_CLIENT_SECRET,
 });
 
 const app = express();
