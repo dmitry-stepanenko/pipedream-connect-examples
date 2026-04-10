@@ -36,11 +36,17 @@ pipedream-connect-examples/
 | [PLAN-01](PLAN-01-api-token-endpoint.md) | Add Pipedream token endpoint to Express API | — | |
 | [PLAN-02](PLAN-02-connect-angular-core.md) | Core library: services, DI tokens, provider | PLAN-01 (for context) | [summary](PLAN-02-summary.md) |
 | [PLAN-03](PLAN-03-selectors.md) | AppSelector and ComponentSelector components | PLAN-02 | [summary](PLAN-03-summary.md) |
-| [PLAN-04](PLAN-04-component-form.md) | Dynamic ComponentForm (all prop types) | PLAN-02, PLAN-03 | |
+| [PLAN-04](PLAN-04-component-form.md) | Dynamic ComponentForm (all prop types) | PLAN-02, PLAN-03 | [summary](PLAN-04-summary.md) |
 | [PLAN-05](PLAN-05-workflow-service.md) | Workflow data model + WorkflowService | PLAN-02 | |
 | [PLAN-06](PLAN-06-workflow-builder-ui.md) | Workflow Builder UI (visual graph) | PLAN-03, PLAN-04, PLAN-05 | |
 | [PLAN-07](PLAN-07-myapp-integration.md) | Wire everything into myapp demo | PLAN-01–06 | |
 | [PLAN-08](PLAN-08-ai-chat-mcp.md) | Phase 2: AI chat via Pipedream MCP | PLAN-07 | |
+
+## Instructions for AI Agents
+
+- **Always write a summary after completing a plan.** Create `PLAN-XX-summary.md` next to the plan file and add a `[summary](PLAN-XX-summary.md)` link in the Notes column of the Execution Order table above. See existing summaries (PLAN-02, PLAN-03, PLAN-04) for the expected format: status, files created/modified, corrections vs. plan, design decisions, and component API.
+- **Update NEXT-STEPS.md** with any manual actions that remain after implementation.
+- **Read prior summaries** before starting a new plan — they contain corrections and decisions that later plans depend on.
 
 ## Key Conventions
 

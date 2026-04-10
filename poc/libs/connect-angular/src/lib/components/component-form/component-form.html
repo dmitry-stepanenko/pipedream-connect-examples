@@ -1,0 +1,122 @@
+<form class="pd-component-form" (ngSubmit)="onSubmit()">
+  @if (reloading()) {
+    <div class="pd-reloading-overlay">Updating form...</div>
+  }
+
+  @for (prop of props(); track prop.name) {
+    @if (!prop.hidden) {
+      <!-- Props with options (static or remote) render as select -->
+      @if (hasOptions(prop)) {
+        <pd-select-field
+          [prop]="prop"
+          [value]="propValue(prop)"
+          [configuredProps]="configuredProps()"
+          [componentId]="component().key"
+          [dynamicPropsId]="dynamicPropsId()"
+          (valueChange)="onFieldChange(prop, $event)"
+        />
+      } @else {
+        @switch (prop.type) {
+          @case ('string') {
+            <pd-string-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('integer') {
+            <pd-number-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('number') {
+            <pd-number-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('boolean') {
+            <pd-boolean-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('object') {
+            <pd-object-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('string[]') {
+            <pd-array-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('integer[]') {
+            <pd-array-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('app') {
+            <pd-app-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('$.interface.timer') {
+            <pd-timer-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('$.interface.http') {
+            <div class="pd-alert pd-alert--info">
+              This step will be triggered via an HTTP webhook endpoint,
+              which Pipedream generates after deployment.
+            </div>
+          }
+          @case ('alert') {
+            <pd-alert-field [prop]="prop" />
+          }
+          @case ('any') {
+            <pd-string-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @case ('data_store') {
+            <pd-string-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+          @default {
+            <!-- Unknown prop type: render as text input -->
+            <pd-string-field
+              [prop]="prop"
+              [value]="propValue(prop)"
+              (valueChange)="onFieldChange(prop, $event)"
+            />
+          }
+        }
+      }
+    }
+  }
+
+  <button type="submit" class="pd-submit-btn" [disabled]="submitting() || reloading()">
+    {{ submitting() ? 'Saving...' : 'Save' }}
+  </button>
+</form>

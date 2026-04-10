@@ -28,7 +28,7 @@ export class ComponentSelectorComponent {
       const app = this.app();
       const type = this.componentType();
       if (app) {
-        this.loadComponents(app.name_slug, type);
+        this.loadComponents(app.nameSlug, type);
       }
     });
   }

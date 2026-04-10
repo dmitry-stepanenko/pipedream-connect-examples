@@ -16,6 +16,33 @@
     },
     "lint": {
       "executor": "@nx/eslint:lint"
+    },
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "main": "libs/connect-angular/src/index.ts",
+        "outputPath": "dist/libs/connect-angular",
+        "outputFileName": "main.js",
+        "tsConfig": "libs/connect-angular/tsconfig.lib.json",
+        "format": ["cjs"],
+        "assets": [
+          {
+            "glob": "libs/connect-angular/README.md",
+            "input": ".",
+            "output": "."
+          }
+        ]
+      },
+      "configurations": {
+        "development": {
+          "minify": false
+        },
+        "production": {
+          "minify": true
+        }
+      }
     }
   }
 }

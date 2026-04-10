@@ -86,16 +86,46 @@ export class PipedreamClientService implements OnDestroy {
   /**
    * Re-fetches component props based on currently configured values.
    * Called when a prop with `reloadProps: true` changes.
-   *
-   * NOTE: Check the exact SDK method signature against @pipedream/sdk types.
-   * Look for: client.components.configureProps() or similar.
-   * Reference: connect-react-demo node_modules/@pipedream/sdk/dist/
+   */
+  reloadProps(
+    componentKey: string,
+    configuredProps: Record<string, unknown>,
+    dynamicPropsId?: string,
+  ) {
+    return this.client.components.reloadProps({
+      id: componentKey,
+      externalUserId: this.config.externalUserId,
+      configuredProps,
+      ...(dynamicPropsId ? { dynamicPropsId } : {}),
+    });
+  }
+
+  /**
+   * Retrieves remote options for a specific prop.
+   * Called for props with `remoteOptions: true`.
+   */
+  configureProp(
+    componentKey: string,
+    propName: string,
+    configuredProps: Record<string, unknown>,
+    dynamicPropsId?: string,
+    query?: string,
+  ) {
+    return this.client.components.configureProp({
+      id: componentKey,
+      externalUserId: this.config.externalUserId,
+      propName,
+      configuredProps,
+      ...(dynamicPropsId ? { dynamicPropsId } : {}),
+      ...(query ? { query } : {}),
+    });
+  }
+
+  /**
+   * @deprecated Use reloadProps() instead.
    */
   configureProps(componentKey: string, configuredProps: Record<string, unknown>) {
-    // TODO: verify exact method name from SDK types
-    // Likely: this.client.components.configureProps({ key: componentKey, configuredProps })
-    // Or: this.client.props.list({ componentKey, configuredProps })
-    throw new Error('Implement after checking @pipedream/sdk types for dynamic props API');
+    return this.reloadProps(componentKey, configuredProps);
   }
 
   ngOnDestroy(): void {

@@ -27,7 +27,7 @@ export class AppSelectorComponent implements OnInit {
     const q = this.query().toLowerCase();
     if (!q) return this.apps();
     return this.apps().filter(
-      (a) => a.name.toLowerCase().includes(q) || a.name_slug.includes(q)
+      (a) => a.name.toLowerCase().includes(q) || a.nameSlug.includes(q)
     );
   });
 

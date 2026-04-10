@@ -12,6 +12,7 @@ export { PipedreamClientService } from './lib/services/pipedream-client.service'
 // Components
 export { AppSelectorComponent } from './lib/components/app-selector/app-selector';
 export { ComponentSelectorComponent } from './lib/components/component-selector/component-selector';
+export { ComponentFormComponent } from './lib/components/component-form/component-form';
 
 // Provider
 export { provideConnectAngular } from './lib/provide-connect-angular';
