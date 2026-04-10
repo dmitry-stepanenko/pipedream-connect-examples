@@ -1,8 +1,8 @@
 <div class="pd-app-selector">
   @if (value()) {
     <div class="pd-selected-app">
-      @if (value()?.img) {
-        <img [src]="value()!.img" [alt]="value()!.name" class="pd-app-icon" />
+      @if (value()?.imgSrc) {
+        <img [src]="value()!.imgSrc" [alt]="value()!.name" class="pd-app-icon" />
       }
       <span>{{ value()?.name }}</span>
       <button type="button" (click)="clear()" aria-label="Clear">✕</button>
@@ -32,8 +32,8 @@
             (keydown.enter)="selectApp(app)"
             tabindex="0"
           >
-            @if (app.img) {
-              <img [src]="app.img" [alt]="app.name" class="pd-app-icon" />
+            @if (app.imgSrc) {
+              <img [src]="app.imgSrc" [alt]="app.name" class="pd-app-icon" />
             }
             <span>{{ app.name }}</span>
           </li>

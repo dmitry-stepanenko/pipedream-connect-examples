@@ -11,8 +11,8 @@
         <span class="pd-step-name">{{ customTriggerName() }}</span>
         <small class="pd-step-source">Custom trigger</small>
       } @else if (isPipedream()) {
-        @if (pipedreamData()?.app?.img) {
-          <img [src]="pipedreamData()!.app.img" class="pd-step-icon" [alt]="pipedreamData()!.app.name" />
+        @if (pipedreamData()?.app?.imgSrc) {
+          <img [src]="pipedreamData()!.app.imgSrc" class="pd-step-icon" [alt]="pipedreamData()!.app.name" />
         }
         <span class="pd-step-name">{{ pipedreamData()?.component?.name }}</span>
         <small class="pd-step-source">{{ pipedreamData()?.app?.name }}</small>

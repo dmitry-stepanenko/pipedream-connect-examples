@@ -1,1 +1,71 @@
-/* You can add global styles to this file, and also import other style files */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+// Button base (used by pd- prefixed components)
+.pd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+  transition: background 0.15s;
+
+  &--primary {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+    &:hover { background: #1d4ed8; }
+  }
+
+  &--secondary {
+    background: white;
+    color: #374151;
+    border-color: #d1d5db;
+    &:hover { background: #f9fafb; }
+  }
+
+  &--danger {
+    background: white;
+    color: #dc2626;
+    border-color: #fca5a5;
+    &:hover { background: #fef2f2; }
+  }
+
+  &--ghost {
+    background: transparent;
+    border-color: transparent;
+    color: #6b7280;
+    &:hover { background: #f3f4f6; }
+  }
+
+  &--sm {
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// Step chain connector
+.pd-connector {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 0;
+}

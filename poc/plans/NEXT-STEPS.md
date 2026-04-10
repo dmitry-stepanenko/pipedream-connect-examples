@@ -71,4 +71,31 @@ All four components (`pd-workflow-list`, `pd-workflow-builder`, `pd-workflow-ste
 
 PLAN-07 (myapp integration) can now import all workflow UI components from `@poc/connect-angular` and wire them into the demo app.
 
+## After PLAN-07 — myapp Integration
+
+**Status:** Implemented. Build passes.
+
+### Required before running the demo
+
+1. **Ensure Pipedream credentials are configured** in `poc/apps/api/.env` (see PLAN-01 section above).
+
+2. **Run both servers:**
+   ```bash
+   # Terminal 1 — API
+   cd poc && npx nx serve api
+
+   # Terminal 2 — Angular app
+   cd poc && npx nx serve myapp
+   ```
+
+3. **Open `http://localhost:4200`** — you should see the workflow builder with sidebar and canvas.
+
+### Cleanup (optional)
+
+The NX scaffold files `apps/myapp/src/app/app.html`, `apps/myapp/src/app/app.scss`, `apps/myapp/src/app/nx-welcome.ts`, and `apps/myapp/src/app/app.routes.ts` are no longer referenced by the app. They can be safely deleted.
+
+### Ready for
+
+PLAN-08 (AI Chat via Pipedream MCP) can build on top of the working demo app.
+
 <!-- Add a new section here after each subsequent plan is implemented -->

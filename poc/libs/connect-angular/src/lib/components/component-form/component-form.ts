@@ -60,7 +60,8 @@ export class ComponentFormComponent {
     });
   }
 
-  protected propValue(prop: ConfigurableProp): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  protected propValue(prop: ConfigurableProp): any {
     return (this.configuredProps() as Record<string, unknown>)[prop.name];
   }
 

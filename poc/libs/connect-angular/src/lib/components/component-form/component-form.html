@@ -31,13 +31,6 @@
               (valueChange)="onFieldChange(prop, $event)"
             />
           }
-          @case ('number') {
-            <pd-number-field
-              [prop]="prop"
-              [value]="propValue(prop)"
-              (valueChange)="onFieldChange(prop, $event)"
-            />
-          }
           @case ('boolean') {
             <pd-boolean-field
               [prop]="prop"
