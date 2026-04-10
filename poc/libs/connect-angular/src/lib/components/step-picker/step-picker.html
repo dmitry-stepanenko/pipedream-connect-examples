@@ -1,0 +1,75 @@
+<div class="pd-step-picker">
+  @switch (mode()) {
+    @case ('choose-source') {
+      <div class="pd-picker-options">
+        <!-- Custom triggers section (only if any are registered) -->
+        @if (customTriggers.length > 0) {
+          <div class="pd-picker-section">
+            <h4>Your Triggers</h4>
+            <ul class="pd-custom-trigger-list">
+              @for (trigger of customTriggers; track trigger.id) {
+                <li
+                  class="pd-custom-trigger-item"
+                  (click)="selectCustom(trigger.id)"
+                  (keydown.enter)="selectCustom(trigger.id)"
+                  tabindex="0"
+                  role="button"
+                >
+                  @if (trigger.icon) {
+                    <span class="pd-trigger-icon">{{ trigger.icon }}</span>
+                  }
+                  <div>
+                    <strong>{{ trigger.name }}</strong>
+                    <small>{{ trigger.description }}</small>
+                  </div>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+
+        <!-- Pipedream apps section -->
+        <div class="pd-picker-section">
+          <h4>{{ stepType() === 'trigger' ? 'App Triggers' : 'App Actions' }}</h4>
+          <button
+            type="button"
+            class="pd-btn pd-btn--secondary"
+            (click)="mode.set('pipedream-app')"
+          >
+            Browse {{ stepType() === 'trigger' ? 'Triggers' : 'Actions' }}
+          </button>
+        </div>
+      </div>
+    }
+
+    @case ('pipedream-app') {
+      <div class="pd-picker-app">
+        <button type="button" class="pd-back-btn" (click)="mode.set('choose-source')">
+          ← Back
+        </button>
+        <h4>Select an App</h4>
+        <pd-app-selector [value]="selectedApp()" (valueChange)="onAppSelected($event)" />
+      </div>
+    }
+
+    @case ('pipedream-component') {
+      <div class="pd-picker-component">
+        <button
+          type="button"
+          class="pd-back-btn"
+          (click)="mode.set('pipedream-app'); selectedApp.set(null)"
+        >
+          ← Back
+        </button>
+        <h4>Select {{ stepType() === 'trigger' ? 'a Trigger' : 'an Action' }}</h4>
+        @if (selectedApp()) {
+          <pd-component-selector
+            [app]="selectedApp()!"
+            [componentType]="stepType()"
+            (valueChange)="onComponentSelected($event)"
+          />
+        }
+      </div>
+    }
+  }
+</div>

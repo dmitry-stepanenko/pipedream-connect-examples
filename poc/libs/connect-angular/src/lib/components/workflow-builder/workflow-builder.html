@@ -1,0 +1,54 @@
+@if (!workflow) {
+  <div class="pd-builder-empty">
+    <p>Select or create a workflow to start building.</p>
+  </div>
+} @else {
+  <div class="pd-workflow-builder">
+    <!-- Header -->
+    <div class="pd-builder-header">
+      @if (editingName()) {
+        <input
+          #nameInput
+          class="pd-workflow-name-input"
+          [value]="workflow.name"
+          (blur)="saveName(nameInput.value)"
+          (keydown.enter)="saveName(nameInput.value)"
+          (keydown.escape)="editingName.set(false)"
+          autofocus
+        />
+      } @else {
+        <h2 class="pd-workflow-name" (click)="editingName.set(true)" title="Click to rename">
+          {{ workflow.name }}
+        </h2>
+      }
+    </div>
+
+    <!-- Step chain with drag-drop -->
+    <div
+      class="pd-step-chain"
+      cdkDropList
+      [cdkDropListData]="workflowService.activeSteps()"
+      (cdkDropListDropped)="onDrop($event)"
+    >
+      @for (step of workflowService.activeSteps(); track step.id; let i = $index) {
+        <div cdkDrag [cdkDragDisabled]="i === 0">
+          <pd-workflow-step
+            [step]="step"
+            [workflowId]="workflow.id"
+            [stepIndex]="i"
+            (remove)="removeStep(step.id)"
+          />
+          <!-- Connector arrow between steps -->
+          @if (i < workflowService.activeSteps().length - 1) {
+            <div class="pd-connector" aria-hidden="true">↓</div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Add step button -->
+    <button type="button" class="pd-add-step-btn" (click)="addStep()">
+      + Add Step
+    </button>
+  </div>
+}

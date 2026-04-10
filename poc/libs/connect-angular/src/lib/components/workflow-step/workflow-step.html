@@ -1,0 +1,66 @@
+<div class="pd-step" [class.pd-step--expanded]="expanded()">
+  <!-- Step header / summary bar -->
+  <div class="pd-step-header" (click)="expanded.set(!expanded())">
+    <div class="pd-step-label">
+      <span class="pd-step-index">{{ stepIndex() + 1 }}</span>
+      @if (isUnconfigured()) {
+        <span class="pd-step-placeholder">
+          {{ step().type === 'trigger' ? 'Choose a trigger' : 'Choose an action' }}
+        </span>
+      } @else if (isCustom()) {
+        <span class="pd-step-name">{{ customTriggerName() }}</span>
+        <small class="pd-step-source">Custom trigger</small>
+      } @else if (isPipedream()) {
+        @if (pipedreamData()?.app?.img) {
+          <img [src]="pipedreamData()!.app.img" class="pd-step-icon" [alt]="pipedreamData()!.app.name" />
+        }
+        <span class="pd-step-name">{{ pipedreamData()?.component?.name }}</span>
+        <small class="pd-step-source">{{ pipedreamData()?.app?.name }}</small>
+      }
+    </div>
+
+    <div class="pd-step-actions">
+      <button
+        type="button"
+        class="pd-btn pd-btn--ghost pd-btn--sm"
+        (click)="expanded.set(!expanded()); $event.stopPropagation()"
+        [attr.aria-expanded]="expanded()"
+      >
+        {{ expanded() ? '▲' : '▼' }}
+      </button>
+      @if (step().type !== 'trigger' || stepIndex() > 0) {
+        <button
+          type="button"
+          class="pd-btn pd-btn--danger pd-btn--sm"
+          (click)="remove.emit(); $event.stopPropagation()"
+          aria-label="Remove step"
+        >
+          ✕
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Expanded content -->
+  @if (expanded()) {
+    <div class="pd-step-body">
+      @if (isUnconfigured()) {
+        <pd-step-picker
+          [stepType]="step().type"
+          (picked)="onStepPicked($event)"
+        />
+      } @else if (isPipedream() && pipedreamData()?.component) {
+        <pd-component-form
+          [component]="pipedreamData()!.component"
+          [configuredProps]="pipedreamData()!.configuredProps"
+          (configure)="onFormConfigure($event)"
+        />
+      } @else if (isCustom()) {
+        <p class="pd-custom-trigger-info">
+          This step triggers the workflow from your internal system.
+          No additional configuration required here.
+        </p>
+      }
+    </div>
+  }
+</div>

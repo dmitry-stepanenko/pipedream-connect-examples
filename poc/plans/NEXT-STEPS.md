@@ -55,4 +55,20 @@ All files are generated code with no external configuration dependencies. The li
 
 PLAN-06 (Workflow Builder UI) can now consume `WorkflowService` and the workflow model types directly from `@poc/connect-angular`.
 
+---
+
+## After PLAN-06 — Workflow Builder UI
+
+**Status:** Implemented. Build passes.
+
+### No manual action required
+
+All four components (`pd-workflow-list`, `pd-workflow-builder`, `pd-workflow-step`, `pd-step-picker`) are library-only with no external dependencies beyond what's already configured (Pipedream SDK + API token endpoint from PLAN-01).
+
+`@angular/cdk@21.2.6` was installed for drag-drop reordering.
+
+### Ready for
+
+PLAN-07 (myapp integration) can now import all workflow UI components from `@poc/connect-angular` and wire them into the demo app.
+
 <!-- Add a new section here after each subsequent plan is implemented -->

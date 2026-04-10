@@ -28,3 +28,9 @@ export type {
 
 // Workflow service
 export { WorkflowService } from './lib/services/workflow.service';
+
+// Workflow UI components
+export { WorkflowListComponent } from './lib/components/workflow-list/workflow-list';
+export { WorkflowBuilderComponent } from './lib/components/workflow-builder/workflow-builder';
+export { WorkflowStepComponent } from './lib/components/workflow-step/workflow-step';
+export { StepPickerComponent } from './lib/components/step-picker/step-picker';

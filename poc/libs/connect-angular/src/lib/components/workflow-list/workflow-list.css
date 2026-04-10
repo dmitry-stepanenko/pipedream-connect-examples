@@ -1,0 +1,91 @@
+:host {
+  display: block;
+}
+
+.pd-workflow-list__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.pd-workflow-list__header h2 {
+  margin: 0;
+}
+
+.pd-empty-state {
+  color: #888;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.pd-workflow-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pd-workflow-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.pd-workflow-item:hover {
+  background-color: #f5f5f5;
+}
+
+.pd-workflow-item--active {
+  border-color: #4f46e5;
+  background-color: #eef2ff;
+}
+
+.pd-workflow-item__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pd-workflow-item__info small {
+  color: #888;
+}
+
+/* Shared button styles */
+.pd-btn {
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+}
+
+.pd-btn--primary {
+  background-color: #4f46e5;
+  color: #fff;
+}
+
+.pd-btn--primary:hover {
+  background-color: #4338ca;
+}
+
+.pd-btn--danger {
+  background-color: transparent;
+  color: #dc2626;
+}
+
+.pd-btn--danger:hover {
+  background-color: #fef2f2;
+}
+
+.pd-btn--sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}

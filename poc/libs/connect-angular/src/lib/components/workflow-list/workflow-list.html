@@ -1,0 +1,38 @@
+<div class="pd-workflow-list">
+  <div class="pd-workflow-list__header">
+    <h2>Workflows</h2>
+    <button type="button" class="pd-btn pd-btn--primary" (click)="create()">
+      + New Workflow
+    </button>
+  </div>
+
+  @if (workflowService.workflows().length === 0) {
+    <p class="pd-empty-state">No workflows yet. Create one to get started.</p>
+  } @else {
+    <ul class="pd-workflow-items">
+      @for (workflow of workflowService.workflows(); track workflow.id) {
+        <li
+          class="pd-workflow-item"
+          [class.pd-workflow-item--active]="workflowService.activeWorkflow()?.id === workflow.id"
+          (click)="openWorkflow(workflow.id)"
+          (keydown.enter)="openWorkflow(workflow.id)"
+          tabindex="0"
+          role="button"
+        >
+          <div class="pd-workflow-item__info">
+            <strong>{{ workflow.name }}</strong>
+            <small>{{ workflow.steps.length }} step(s)</small>
+          </div>
+          <button
+            type="button"
+            class="pd-btn pd-btn--danger pd-btn--sm"
+            (click)="delete($event, workflow.id)"
+            aria-label="Delete workflow"
+          >
+            ✕
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</div>
