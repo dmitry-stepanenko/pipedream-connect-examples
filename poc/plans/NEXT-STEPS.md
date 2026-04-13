@@ -98,4 +98,36 @@ The NX scaffold files `apps/myapp/src/app/app.html`, `apps/myapp/src/app/app.scs
 
 PLAN-08 (AI Chat via Pipedream MCP) can build on top of the working demo app.
 
+## After PLAN-08 — AI Chat via Hashbrown + Pipedream MCP
+
+**Status:** Implemented. Build passes. Requires credential setup and MCP URL verification.
+
+### Required before running the AI chat
+
+1. **Add Azure OpenAI credentials** to `poc/apps/api/.env`:
+   ```
+   AZURE_OPENAI_API_KEY=your-azure-openai-key
+   AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+   ```
+
+2. **Verify Pipedream MCP URL format** — the proxy assumes `https://mcp.pipedream.com/{externalUserId}`. Read the docs at `https://mcp.pipedream.com/developers` and adjust the proxy in `apps/api/src/main.ts` if the URL or auth headers differ.
+
+3. **Trigger MCP connection** — `PipedreamMcpService.connect()` is not called automatically. You need to call it somewhere, for example:
+   - Add a "Connect" button in the UI, or
+   - Call it from `ngOnInit` in `AppComponent` (add `OnInit`, inject `PipedreamMcpService`, and call `this.mcpService.connect()`)
+
+4. **Configure the Azure model string** — the chat panel hardcodes `gpt-4o@2024-11-20` in `libs/connect-angular/src/lib/components/chat-panel/chat-panel.ts`. Change this to match your Azure deployment name and API version.
+
+### Verification
+
+1. Start both servers (`nx serve api`, `nx serve myapp`)
+2. Open `http://localhost:4200`, select or create a workflow
+3. Click the **AI Chat** tab in the right panel
+4. Type a message — it should stream a response from Azure OpenAI
+
+### Known warnings
+
+- `ajv` / `ajv-formats` from `@modelcontextprotocol/sdk` trigger CommonJS warnings during the Angular build. These are cosmetic and do not affect functionality.
+- Bundle size exceeds the default 500 kB budget (now ~937 kB) due to the MCP SDK. Adjust the budget in `angular.json` if needed.
+
 <!-- Add a new section here after each subsequent plan is implemented -->

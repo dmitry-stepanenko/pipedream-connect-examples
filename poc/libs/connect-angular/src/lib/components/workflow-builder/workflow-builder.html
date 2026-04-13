@@ -51,55 +51,78 @@
       </button>
     </div>
 
-    <!-- Right: detail panel -->
+    <!-- Right: tabbed panel (Step Details / AI Chat) -->
     <div class="pd-builder-panel">
-      @if (selectedStep(); as step) {
-        <div class="pd-panel-content">
-          @if (!step.data) {
-            <h3 class="pd-panel-title">
-              {{ step.type === 'trigger' ? 'Choose a trigger' : 'Choose an action' }}
-            </h3>
-            <pd-step-picker
-              [stepType]="step.type"
-              (picked)="onStepPicked($event)"
-            />
-          } @else if (selectedPipedreamData(); as pd) {
-            <div class="pd-panel-header">
-              <div>
-                <h3 class="pd-panel-title">{{ pd.component.name }}</h3>
-                <small class="pd-panel-subtitle">{{ pd.app.name }}</small>
-              </div>
-              <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" (click)="clearStepData()">
-                Change
-              </button>
-            </div>
-            @if (pd.component) {
-              <pd-component-form
-                [component]="pd.component"
-                [configuredProps]="pd.configuredProps"
-                (configure)="onFormConfigure($event)"
+      <div class="pd-panel-tabs">
+        <button
+          type="button"
+          class="pd-panel-tab"
+          [class.pd-panel-tab--active]="panelTab() === 'details'"
+          (click)="panelTab.set('details')"
+        >
+          Step Details
+        </button>
+        <button
+          type="button"
+          class="pd-panel-tab"
+          [class.pd-panel-tab--active]="panelTab() === 'chat'"
+          (click)="panelTab.set('chat')"
+        >
+          AI Chat
+        </button>
+      </div>
+
+      @if (panelTab() === 'details') {
+        @if (selectedStep(); as step) {
+          <div class="pd-panel-content">
+            @if (!step.data) {
+              <h3 class="pd-panel-title">
+                {{ step.type === 'trigger' ? 'Choose a trigger' : 'Choose an action' }}
+              </h3>
+              <pd-step-picker
+                [stepType]="step.type"
+                (picked)="onStepPicked($event)"
               />
-            }
-          } @else if (selectedCustomData()) {
-            <div class="pd-panel-header">
-              <div>
-                <h3 class="pd-panel-title">{{ selectedCustomTriggerName() }}</h3>
-                <small class="pd-panel-subtitle">Custom trigger</small>
+            } @else if (selectedPipedreamData(); as pd) {
+              <div class="pd-panel-header">
+                <div>
+                  <h3 class="pd-panel-title">{{ pd.component.name }}</h3>
+                  <small class="pd-panel-subtitle">{{ pd.app.name }}</small>
+                </div>
+                <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" (click)="clearStepData()">
+                  Change
+                </button>
               </div>
-              <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" (click)="clearStepData()">
-                Change
-              </button>
-            </div>
-            <p class="pd-custom-trigger-info">
-              This step triggers the workflow from your internal system.
-              No additional configuration required here.
-            </p>
-          }
-        </div>
+              @if (pd.component) {
+                <pd-component-form
+                  [component]="pd.component"
+                  [configuredProps]="pd.configuredProps"
+                  (configure)="onFormConfigure($event)"
+                />
+              }
+            } @else if (selectedCustomData()) {
+              <div class="pd-panel-header">
+                <div>
+                  <h3 class="pd-panel-title">{{ selectedCustomTriggerName() }}</h3>
+                  <small class="pd-panel-subtitle">Custom trigger</small>
+                </div>
+                <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" (click)="clearStepData()">
+                  Change
+                </button>
+              </div>
+              <p class="pd-custom-trigger-info">
+                This step triggers the workflow from your internal system.
+                No additional configuration required here.
+              </p>
+            }
+          </div>
+        } @else {
+          <div class="pd-panel-placeholder">
+            <p>Select a step to configure it.</p>
+          </div>
+        }
       } @else {
-        <div class="pd-panel-placeholder">
-          <p>Select a step to configure it.</p>
-        </div>
+        <pd-chat-panel />
       }
     </div>
   </div>

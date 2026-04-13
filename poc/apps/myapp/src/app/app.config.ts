@@ -4,6 +4,7 @@ import {
   provideCustomTriggers,
 } from '@poc/connect-angular';
 import type { CustomTrigger } from '@poc/connect-angular';
+import { provideHashbrown } from '@hashbrownai/angular';
 import { environment } from '../environments/environment';
 
 // -- Sample custom triggers -----------------------------------------------
@@ -78,5 +79,6 @@ export const appConfig: ApplicationConfig = {
       externalUserId: 'demo-user-1',
     }),
     provideCustomTriggers(customTriggers),
+    provideHashbrown({ baseUrl: `${environment.apiUrl}/api/chat` }),
   ],
 };

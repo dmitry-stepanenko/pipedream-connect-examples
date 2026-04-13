@@ -11,6 +11,7 @@ import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
 import { WorkflowStepComponent } from '../workflow-step/workflow-step';
 import { StepPickerComponent } from '../step-picker/step-picker';
 import { ComponentFormComponent } from '../component-form/component-form';
+import { ChatPanelComponent } from '../chat-panel/chat-panel';
 
 @Component({
   selector: 'pd-workflow-builder',
@@ -21,6 +22,7 @@ import { ComponentFormComponent } from '../component-form/component-form';
     WorkflowStepComponent,
     StepPickerComponent,
     ComponentFormComponent,
+    ChatPanelComponent,
   ],
   templateUrl: './workflow-builder.html',
   styleUrl: './workflow-builder.css',
@@ -30,6 +32,7 @@ export class WorkflowBuilderComponent {
   protected readonly customTriggers = inject(CUSTOM_TRIGGERS);
   protected readonly editingName = signal(false);
   protected readonly selectedStepId = signal<string | null>(null);
+  protected readonly panelTab = signal<'details' | 'chat'>('details');
 
   protected get workflow() {
     return this.workflowService.activeWorkflow();

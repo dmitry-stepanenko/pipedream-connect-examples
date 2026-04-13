@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import * as path from 'path';
 import { PipedreamClient } from '@pipedream/sdk/server';
+import { HashbrownAzure } from '@hashbrownai/azure';
+import type { Chat } from '@hashbrownai/core';
 
 const {
   PIPEDREAM_CLIENT_ID,
@@ -11,6 +13,8 @@ const {
   PIPEDREAM_PROJECT_ENVIRONMENT = 'development',
   PORT = '3333',
   ALLOWED_ORIGIN = 'http://localhost:4200',
+  AZURE_OPENAI_API_KEY,
+  AZURE_OPENAI_ENDPOINT,
 } = process.env;
 
 if (!PIPEDREAM_CLIENT_ID || !PIPEDREAM_CLIENT_SECRET || !PIPEDREAM_PROJECT_ID) {
@@ -56,6 +60,120 @@ app.post('/api/pipedream/token', async (req, res) => {
     res.status(500).json({ error: 'Failed to create token' });
   }
 });
+
+// ── Hashbrown chat endpoint (LLM proxy) ────────────────────────────────────
+
+app.post('/api/chat', async (req, res) => {
+  if (!AZURE_OPENAI_API_KEY || !AZURE_OPENAI_ENDPOINT) {
+    res.status(500).json({ error: 'AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT not configured' });
+    return;
+  }
+
+  const completionParams = req.body as Chat.Api.CompletionCreateParams;
+
+  const response = HashbrownAzure.stream.text({
+    apiKey: AZURE_OPENAI_API_KEY,
+    endpoint: AZURE_OPENAI_ENDPOINT,
+    request: completionParams as any,
+  });
+
+  res.header('Content-Type', 'application/octet-stream');
+
+  for await (const chunk of response) {
+    res.write(chunk);
+  }
+
+  res.end();
+});
+
+// ── MCP proxy to Pipedream ─────────────────────────────────────────────────
+
+app.post('/api/mcp', async (req, res) => {
+  const externalUserId = req.query.externalUserId as string;
+  if (!externalUserId) {
+    res.status(400).json({ error: 'externalUserId query parameter required' });
+    return;
+  }
+
+  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
+  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+
+    const upstream = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(req.body),
+    });
+
+    const upstreamSessionId = upstream.headers.get('Mcp-Session-Id');
+    if (upstreamSessionId) res.setHeader('Mcp-Session-Id', upstreamSessionId);
+
+    res.status(upstream.status);
+    const body = await upstream.text();
+    res.send(body);
+  } catch (err) {
+    console.error('MCP proxy error:', err);
+    res.status(502).json({ error: 'MCP proxy request failed' });
+  }
+});
+
+app.get('/api/mcp', async (req, res) => {
+  const externalUserId = req.query.externalUserId as string;
+  if (!externalUserId) {
+    res.status(400).json({ error: 'externalUserId query parameter required' });
+    return;
+  }
+
+  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
+  const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+  try {
+    const headers: Record<string, string> = {};
+    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+
+    const upstream = await fetch(targetUrl, { method: 'GET', headers });
+
+    const upstreamSessionId = upstream.headers.get('Mcp-Session-Id');
+    if (upstreamSessionId) res.setHeader('Mcp-Session-Id', upstreamSessionId);
+
+    const contentType = upstream.headers.get('Content-Type');
+    if (contentType) res.setHeader('Content-Type', contentType);
+
+    res.status(upstream.status);
+    const body = await upstream.text();
+    res.send(body);
+  } catch (err) {
+    console.error('MCP proxy error:', err);
+    res.status(502).json({ error: 'MCP proxy request failed' });
+  }
+});
+
+app.delete('/api/mcp', async (req, res) => {
+  const externalUserId = req.query.externalUserId as string;
+  if (!externalUserId) {
+    res.status(400).json({ error: 'externalUserId query parameter required' });
+    return;
+  }
+
+  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
+  const sessionId = req.headers['mcp-session-id'] as string;
+
+  try {
+    const headers: Record<string, string> = {};
+    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+
+    const upstream = await fetch(targetUrl, { method: 'DELETE', headers });
+    res.sendStatus(upstream.status);
+  } catch (err) {
+    console.error('MCP proxy error:', err);
+    res.status(502).json({ error: 'MCP proxy cleanup failed' });
+  }
+});
+
+// ── Start server ───────────────────────────────────────────────────────────
 
 const port = parseInt(PORT, 10);
 const server = app.listen(port, () => {

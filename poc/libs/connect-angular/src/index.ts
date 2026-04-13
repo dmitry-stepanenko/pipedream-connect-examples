@@ -34,3 +34,7 @@ export { WorkflowListComponent } from './lib/components/workflow-list/workflow-l
 export { WorkflowBuilderComponent } from './lib/components/workflow-builder/workflow-builder';
 export { WorkflowStepComponent } from './lib/components/workflow-step/workflow-step';
 export { StepPickerComponent } from './lib/components/step-picker/step-picker';
+
+// Chat / AI
+export { PipedreamMcpService } from './lib/services/pipedream-mcp.service';
+export { ChatPanelComponent } from './lib/components/chat-panel/chat-panel';

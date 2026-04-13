@@ -40,7 +40,7 @@ pipedream-connect-examples/
 | [PLAN-05](PLAN-05-workflow-service.md) | Workflow data model + WorkflowService | PLAN-02 | [summary](PLAN-05-summary.md) |
 | [PLAN-06](PLAN-06-workflow-builder-ui.md) | Workflow Builder UI (visual graph) | PLAN-03, PLAN-04, PLAN-05 | [summary](PLAN-06-summary.md) |
 | [PLAN-07](PLAN-07-myapp-integration.md) | Wire everything into myapp demo | PLAN-01–06 | [summary](PLAN-07-summary.md) |
-| [PLAN-08](PLAN-08-ai-chat-mcp.md) | Phase 2: AI chat via Pipedream MCP | PLAN-07 | |
+| [PLAN-08](PLAN-08-ai-chat-mcp.md) | Phase 2: AI chat via Pipedream MCP | PLAN-07 | [summary](PLAN-08-summary.md) |
 
 ## Instructions for AI Agents
 

@@ -1,0 +1,106 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pd-chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pd-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pd-msg--user {
+  align-self: flex-end;
+  max-width: 85%;
+}
+
+.pd-msg--assistant {
+  align-self: flex-start;
+  max-width: 95%;
+}
+
+.pd-msg--error {
+  color: #dc2626;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.pd-msg--error button {
+  margin-left: 8px;
+  background: none;
+  border: 1px solid #dc2626;
+  color: #dc2626;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.pd-bubble {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #f3f4f6;
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+
+.pd-msg--user .pd-bubble {
+  background: #4f46e5;
+  color: white;
+}
+
+.pd-bubble--loading {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.pd-chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pd-chat-input {
+  flex: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 12px;
+  resize: none;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.pd-chat-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.pd-btn--send {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.pd-btn--send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

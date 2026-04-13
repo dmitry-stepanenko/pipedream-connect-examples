@@ -89,10 +89,43 @@
   border-left: 1px solid #e5e7eb;
   overflow-y: auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Panel tabs */
+.pd-panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.pd-panel-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pd-panel-tab:hover {
+  color: #111827;
+}
+
+.pd-panel-tab--active {
+  color: #4f46e5;
+  border-bottom-color: #4f46e5;
 }
 
 .pd-panel-content {
   padding: 1.25rem;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .pd-panel-header {
@@ -117,7 +150,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  flex: 1;
   color: #999;
 }
 
