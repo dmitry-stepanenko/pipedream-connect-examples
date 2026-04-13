@@ -130,13 +130,16 @@ export class WorkflowSuggestionCard {
   `,
   styleUrl: './chat-panel.css',
 })
-export class ChatPanelComponent implements AfterViewInit{
+export class ChatPanelComponent implements AfterViewInit {
   private readonly mcpService = inject(PipedreamMcpService);
   private readonly pdClient = inject(PipedreamClientService);
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
   private readonly scrollContainer =
     viewChild.required<ElementRef<HTMLDivElement>>('scrollContainer');
+
+  private readonly textarea =
+    viewChild<ElementRef<HTMLTextAreaElement>>('inputEl');
 
   constructor() {
     effect(() => {
@@ -186,8 +189,12 @@ export class ChatPanelComponent implements AfterViewInit{
     schema: s.object('ConfigureStepInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to configure'),
-      appSlug: s.string('The Pipedream app name_slug (e.g. "github", "slack_v2")'),
-      componentKey: s.string('The Pipedream component key (e.g. "github-list-repos")'),
+      appSlug: s.string(
+        'The Pipedream app name_slug (e.g. "github", "slack_v2")',
+      ),
+      componentKey: s.string(
+        'The Pipedream component key (e.g. "github-list-repos")',
+      ),
     }),
     handler: async (input) => {
       const [app, component] = await Promise.all([
@@ -201,7 +208,11 @@ export class ChatPanelComponent implements AfterViewInit{
         configuredProps: {},
       };
       this.workflowService.configureStep(input.workflowId, input.stepId, data);
-      return { success: true, app: (app as any).name, component: (component as any).name };
+      return {
+        success: true,
+        app: (app as any).name,
+        component: (component as any).name,
+      };
     },
   });
 
@@ -283,6 +294,7 @@ export class ChatPanelComponent implements AfterViewInit{
 
   ngAfterViewInit() {
     this.mcpService.connect();
+    this.textarea()!.nativeElement.value = `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them and sends a short report as a slack message`;
   }
 
   sendMessage(message: string) {

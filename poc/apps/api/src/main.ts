@@ -115,12 +115,12 @@ app.post('/api/mcp', async (req, res) => {
   }
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
-  const conversationId = req.headers['x-pd-conversation-id'] as string | undefined;
+  const chatId = req.headers['x-pd-mcp-chat-id'] as string | undefined;
 
   try {
     const extra: Record<string, string> = { 'Content-Type': 'application/json' };
     if (sessionId) extra['Mcp-Session-Id'] = sessionId;
-    if (conversationId) extra['x-pd-conversation-id'] = conversationId;
+    if (chatId) extra['x-pd-mcp-chat-id'] = chatId;
 
     const headers = await pdMcpHeaders(externalUserId, extra);
 
@@ -172,12 +172,12 @@ app.delete('/api/mcp', async (req, res) => {
   }
 
   const sessionId = req.headers['mcp-session-id'] as string;
-  const conversationId = req.headers['x-pd-conversation-id'] as string | undefined;
+  const chatId = req.headers['x-pd-mcp-chat-id'] as string | undefined;
 
   try {
     const extra: Record<string, string> = {};
     if (sessionId) extra['Mcp-Session-Id'] = sessionId;
-    if (conversationId) extra['x-pd-conversation-id'] = conversationId;
+    if (chatId) extra['x-pd-mcp-chat-id'] = chatId;
 
     const headers = await pdMcpHeaders(externalUserId, extra);
 

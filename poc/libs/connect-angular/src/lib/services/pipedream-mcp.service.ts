@@ -10,11 +10,14 @@ export class PipedreamMcpService {
   private readonly config = inject(PIPEDREAM_CONFIG);
   private readonly injector = inject(Injector);
   private client?: Client;
+  private chatId: string = crypto.randomUUID();
 
   readonly connected = signal(false);
   readonly tools = signal<Chat.AnyTool[]>([]);
 
-  async connect() {
+  async connect(chatId?: string) {
+    if (chatId) this.chatId = chatId;
+
     this.client = new Client({
       name: 'pipedream',
       version: '1.0.0',
@@ -25,11 +28,10 @@ export class PipedreamMcpService {
       `${apiBase}/api/mcp?externalUserId=${encodeURIComponent(this.config.externalUserId)}`,
     );
 
-    const conversationId = crypto.randomUUID(); // TODO: this should be static?
     await this.client.connect(new StreamableHTTPClientTransport(mcpUrl, {
       requestInit: {
         headers: {
-          'x-pd-conversation-id': conversationId,
+          'x-pd-mcp-chat-id': this.chatId,
         },
       },
     }));
