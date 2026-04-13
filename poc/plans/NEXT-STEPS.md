@@ -110,7 +110,7 @@ PLAN-08 (AI Chat via Pipedream MCP) can build on top of the working demo app.
    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
    ```
 
-2. **Verify Pipedream MCP URL format** — the proxy assumes `https://mcp.pipedream.com/{externalUserId}`. Read the docs at `https://mcp.pipedream.com/developers` and adjust the proxy in `apps/api/src/main.ts` if the URL or auth headers differ.
+2. **Pipedream MCP URL** — the proxy now targets `https://remote.mcp.pipedream.net` (configurable via `MCP_SERVER` env var) and sends the required `Authorization` + `x-pd-*` headers automatically using the SDK credentials from `.env`.
 
 3. **Trigger MCP connection** — `PipedreamMcpService.connect()` is not called automatically. You need to call it somewhere, for example:
    - Add a "Connect" button in the UI, or

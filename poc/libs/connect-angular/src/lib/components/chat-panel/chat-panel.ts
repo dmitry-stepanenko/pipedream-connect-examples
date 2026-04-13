@@ -1,4 +1,5 @@
 import {
+  AfterViewInit,
   Component,
   effect,
   ElementRef,
@@ -14,8 +15,10 @@ import {
 } from '@hashbrownai/angular';
 import { prompt, s } from '@hashbrownai/core';
 import { PipedreamMcpService } from '../../services/pipedream-mcp.service';
+import { PipedreamClientService } from '../../services/pipedream-client.service';
 import { WorkflowService } from '../../services/workflow.service';
 import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
+import type { PipedreamStep } from '../../models/workflow.model';
 
 // ── Exposed components the AI can render ────────────────────────────────────
 
@@ -127,8 +130,9 @@ export class WorkflowSuggestionCard {
   `,
   styleUrl: './chat-panel.css',
 })
-export class ChatPanelComponent {
+export class ChatPanelComponent implements AfterViewInit{
   private readonly mcpService = inject(PipedreamMcpService);
+  private readonly pdClient = inject(PipedreamClientService);
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
   private readonly scrollContainer =
@@ -172,6 +176,35 @@ export class ChatPanelComponent {
     },
   });
 
+  private readonly configureStepTool = createTool({
+    name: 'configure_step',
+    description:
+      'Configure a workflow step with a Pipedream app and component. ' +
+      'Call this after create_workflow / add_workflow_step to populate the step ' +
+      'with the chosen trigger or action. Provide the app slug (e.g. "slack_v2") ' +
+      'and the component key (e.g. "slack_v2-send-message-to-channel").',
+    schema: s.object('ConfigureStepInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID to configure'),
+      appSlug: s.string('The Pipedream app name_slug (e.g. "github", "slack_v2")'),
+      componentKey: s.string('The Pipedream component key (e.g. "github-list-repos")'),
+    }),
+    handler: async (input) => {
+      const [app, component] = await Promise.all([
+        this.pdClient.getApp(input.appSlug),
+        this.pdClient.getComponent(input.componentKey),
+      ]);
+      const data: PipedreamStep = {
+        source: 'pipedream',
+        app: app as any,
+        component: component as any,
+        configuredProps: {},
+      };
+      this.workflowService.configureStep(input.workflowId, input.stepId, data);
+      return { success: true, app: (app as any).name, component: (component as any).name };
+    },
+  });
+
   private readonly listCustomTriggersTool = createTool({
     name: 'list_custom_triggers',
     description:
@@ -198,11 +231,12 @@ export class ChatPanelComponent {
 
       ### RULES
       1. When the user describes a workflow, use tools to find the right apps/components first.
-      2. Use create_workflow and add_workflow_step to actually build the workflow.
-      3. Use list_custom_triggers to check available internal event triggers.
-      4. Keep responses short and actionable.
-      5. If you need clarification, ask a concise question.
-      6. Show a summary of what you built using the workflow-suggestion-card component.
+      2. Use create_workflow to create the workflow, add_workflow_step to add steps, then **configure_step** for each step with the correct appSlug and componentKey.
+      3. Always configure every step — a step with no configuration is useless.
+      4. Use list_custom_triggers to check available internal event triggers.
+      5. Keep responses short and actionable.
+      6. If you need clarification, ask a concise question.
+      7. Show a summary of what you built using the workflow-suggestion-card component.
 
       ### EXAMPLES
 
@@ -242,9 +276,14 @@ export class ChatPanelComponent {
       ...this.mcpService.tools(),
       this.createWorkflowTool,
       this.addStepTool,
+      this.configureStepTool,
       this.listCustomTriggersTool,
     ],
   });
+
+  ngAfterViewInit() {
+    this.mcpService.connect();
+  }
 
   sendMessage(message: string) {
     this.chat.sendMessage({ role: 'user', content: message });

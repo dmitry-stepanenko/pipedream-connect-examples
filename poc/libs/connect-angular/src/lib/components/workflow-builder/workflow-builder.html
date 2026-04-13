@@ -72,7 +72,7 @@
         </button>
       </div>
 
-      @if (panelTab() === 'details') {
+      <div class="pd-panel-content-area" [hidden]="panelTab() !== 'details'">
         @if (selectedStep(); as step) {
           <div class="pd-panel-content">
             @if (!step.data) {
@@ -121,9 +121,11 @@
             <p>Select a step to configure it.</p>
           </div>
         }
-      } @else {
+      </div>
+
+      <div class="pd-panel-content-area" [hidden]="panelTab() !== 'chat'">
         <pd-chat-panel />
-      }
+      </div>
     </div>
   </div>
 }

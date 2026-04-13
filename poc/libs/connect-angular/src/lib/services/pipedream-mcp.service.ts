@@ -25,7 +25,14 @@ export class PipedreamMcpService {
       `${apiBase}/api/mcp?externalUserId=${encodeURIComponent(this.config.externalUserId)}`,
     );
 
-    await this.client.connect(new StreamableHTTPClientTransport(mcpUrl));
+    const conversationId = crypto.randomUUID(); // TODO: this should be static?
+    await this.client.connect(new StreamableHTTPClientTransport(mcpUrl, {
+      requestInit: {
+        headers: {
+          'x-pd-conversation-id': conversationId,
+        },
+      },
+    }));
 
     const { tools: mcpTools } = await this.client.listTools();
 

@@ -88,6 +88,25 @@ app.post('/api/chat', async (req, res) => {
 
 // ── MCP proxy to Pipedream ─────────────────────────────────────────────────
 
+const MCP_TARGET_URL = process.env.MCP_SERVER ?? 'https://remote.mcp.pipedream.net';
+
+async function pdMcpHeaders(
+  externalUserId: string,
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const accessToken = await (pd as any).rawAccessToken;
+  return {
+    Accept: 'application/json, text/event-stream',
+    Authorization: `Bearer ${accessToken}`,
+    'x-pd-project-id': PIPEDREAM_PROJECT_ID!,
+    'x-pd-environment': PIPEDREAM_PROJECT_ENVIRONMENT,
+    'x-pd-external-user-id': externalUserId,
+    'x-pd-tool-mode': 'full-config',
+    'x-pd-app-discovery': 'true',
+    ...extra,
+  };
+}
+
 app.post('/api/mcp', async (req, res) => {
   const externalUserId = req.query.externalUserId as string;
   if (!externalUserId) {
@@ -95,14 +114,17 @@ app.post('/api/mcp', async (req, res) => {
     return;
   }
 
-  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
+  const conversationId = req.headers['x-pd-conversation-id'] as string | undefined;
 
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+    const extra: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (sessionId) extra['Mcp-Session-Id'] = sessionId;
+    if (conversationId) extra['x-pd-conversation-id'] = conversationId;
 
-    const upstream = await fetch(targetUrl, {
+    const headers = await pdMcpHeaders(externalUserId, extra);
+
+    const upstream = await fetch(MCP_TARGET_URL, {
       method: 'POST',
       headers,
       body: JSON.stringify(req.body),
@@ -111,44 +133,35 @@ app.post('/api/mcp', async (req, res) => {
     const upstreamSessionId = upstream.headers.get('Mcp-Session-Id');
     if (upstreamSessionId) res.setHeader('Mcp-Session-Id', upstreamSessionId);
 
+    const contentType = upstream.headers.get('Content-Type');
+    if (contentType) res.setHeader('Content-Type', contentType);
+
     res.status(upstream.status);
-    const body = await upstream.text();
-    res.send(body);
+
+    if (contentType?.includes('text/event-stream') && upstream.body) {
+      const reader = (upstream.body as ReadableStream<Uint8Array>).getReader();
+      const flush = () => { if (typeof (res as any).flush === 'function') (res as any).flush(); };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+        flush();
+      }
+      res.end();
+    } else {
+      const body = await upstream.text();
+      res.send(body);
+    }
   } catch (err) {
     console.error('MCP proxy error:', err);
     res.status(502).json({ error: 'MCP proxy request failed' });
   }
 });
 
-app.get('/api/mcp', async (req, res) => {
-  const externalUserId = req.query.externalUserId as string;
-  if (!externalUserId) {
-    res.status(400).json({ error: 'externalUserId query parameter required' });
-    return;
-  }
-
-  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-  try {
-    const headers: Record<string, string> = {};
-    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
-
-    const upstream = await fetch(targetUrl, { method: 'GET', headers });
-
-    const upstreamSessionId = upstream.headers.get('Mcp-Session-Id');
-    if (upstreamSessionId) res.setHeader('Mcp-Session-Id', upstreamSessionId);
-
-    const contentType = upstream.headers.get('Content-Type');
-    if (contentType) res.setHeader('Content-Type', contentType);
-
-    res.status(upstream.status);
-    const body = await upstream.text();
-    res.send(body);
-  } catch (err) {
-    console.error('MCP proxy error:', err);
-    res.status(502).json({ error: 'MCP proxy request failed' });
-  }
+// GET /api/mcp — The Pipedream MCP server is stateless and does not support
+// server-initiated SSE streams. Return 405 so the SDK client stops retrying.
+app.get('/api/mcp', (_req, res) => {
+  res.status(405).json({ error: 'SSE stream not supported by this MCP server' });
 });
 
 app.delete('/api/mcp', async (req, res) => {
@@ -158,14 +171,17 @@ app.delete('/api/mcp', async (req, res) => {
     return;
   }
 
-  const targetUrl = `https://mcp.pipedream.com/${externalUserId}`;
   const sessionId = req.headers['mcp-session-id'] as string;
+  const conversationId = req.headers['x-pd-conversation-id'] as string | undefined;
 
   try {
-    const headers: Record<string, string> = {};
-    if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+    const extra: Record<string, string> = {};
+    if (sessionId) extra['Mcp-Session-Id'] = sessionId;
+    if (conversationId) extra['x-pd-conversation-id'] = conversationId;
 
-    const upstream = await fetch(targetUrl, { method: 'DELETE', headers });
+    const headers = await pdMcpHeaders(externalUserId, extra);
+
+    const upstream = await fetch(MCP_TARGET_URL, { method: 'DELETE', headers });
     res.sendStatus(upstream.status);
   } catch (err) {
     console.error('MCP proxy error:', err);
