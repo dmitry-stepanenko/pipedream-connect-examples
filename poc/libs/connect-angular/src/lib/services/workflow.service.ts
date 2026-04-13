@@ -42,7 +42,9 @@ export class WorkflowService {
     };
     this._workflows.update((list) => [...list, workflow]);
     this._activeWorkflowId.set(workflow.id);
-    this.persist();
+    // Don't persist yet — empty workflows with only a blank trigger
+    // are written to storage once a step gets configured, a step is
+    // added, or the workflow is renamed.
     return workflow;
   }
 

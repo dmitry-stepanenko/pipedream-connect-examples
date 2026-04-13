@@ -62,6 +62,7 @@ export class WorkflowBuilderComponent {
 
   protected selectStep(stepId: string) {
     this.selectedStepId.set(stepId);
+    this.panelTab.set('details');
   }
 
   protected addStep() {

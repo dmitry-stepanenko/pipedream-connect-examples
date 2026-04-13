@@ -249,21 +249,23 @@ export class ChatPanelComponent implements AfterViewInit {
       ),
     }),
     handler: async (input) => {
-      const [app, component] = await Promise.all([
+      const [appResponse, componentResponse] = await Promise.all([
         this.pdClient.getApp(input.appSlug),
         this.pdClient.getComponent(input.componentKey),
       ]);
+      const app = (appResponse as any).data;
+      const component = (componentResponse as any).data;
       const data: PipedreamStep = {
         source: 'pipedream',
-        app: app as any,
-        component: component as any,
+        app,
+        component,
         configuredProps: {},
       };
       this.workflowService.configureStep(input.workflowId, input.stepId, data);
       return {
         success: true,
-        app: (app as any).name,
-        component: (component as any).name,
+        app: app.name,
+        component: component.name,
       };
     },
   });
@@ -277,10 +279,70 @@ export class ChatPanelComponent implements AfterViewInit {
     },
   });
 
+  private readonly getActiveWorkflowTool = createTool({
+    name: 'get_active_workflow',
+    description:
+      'Get the currently active workflow, including its ID, name, and all steps ' +
+      'with their configuration. Returns null if no workflow is active. ' +
+      'ALWAYS call this first when the user asks about their current workflow ' +
+      'or wants to modify an existing one.',
+    handler: () => {
+      const workflow = this.workflowService.activeWorkflow();
+      if (!workflow) return Promise.resolve({ activeWorkflow: null as any });
+      return Promise.resolve({
+        activeWorkflow: {
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description,
+          steps: workflow.steps.map((step) => ({
+            id: step.id,
+            type: step.type,
+            configured: !!step.data,
+            app: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).app?.name : null,
+            component: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).component?.name : null,
+            componentKey: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).component?.key : null,
+            customTriggerId: step.data?.source === 'custom' ? step.data.customTriggerId : null,
+          })),
+        },
+      });
+    },
+  });
+
+  private readonly updateWorkflowNameTool = createTool({
+    name: 'update_workflow_name',
+    description:
+      'Rename an existing workflow. Use this after building a workflow to give it a descriptive name.',
+    schema: s.object('UpdateWorkflowNameInput', {
+      workflowId: s.string('The workflow ID'),
+      name: s.string('The new name for the workflow'),
+    }),
+    handler: (input) => {
+      this.workflowService.updateWorkflow(input.workflowId, { name: input.name });
+      return Promise.resolve({ success: true, name: input.name });
+    },
+  });
+
+  private readonly removeStepTool = createTool({
+    name: 'remove_workflow_step',
+    description:
+      'Remove a step from a workflow by its step ID. Cannot remove the trigger step (index 0).',
+    schema: s.object('RemoveStepInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID to remove'),
+    }),
+    handler: (input) => {
+      this.workflowService.removeStep(input.workflowId, input.stepId);
+      return Promise.resolve({ success: true });
+    },
+  });
+
   private readonly clientTools = [
+    this.getActiveWorkflowTool,
     this.createWorkflowTool,
     this.addStepTool,
     this.configureStepTool,
+    this.removeStepTool,
+    this.updateWorkflowNameTool,
     this.listCustomTriggersTool,
   ];
 
@@ -293,39 +355,85 @@ export class ChatPanelComponent implements AfterViewInit {
         debugName: 'workflow-chat',
         messages,
         system: prompt`
-          ### ROLE & TONE
+          ### ROLE
           You are **Workflow Builder Assistant**, a concise AI that helps users
           build automated workflows using Pipedream integrations and custom triggers.
+          You run tasks that access and connect to web apps on behalf of the user.
 
-          ### WHAT YOU CAN DO
-          - Search for Pipedream apps and components using the available MCP tools
-          - Create workflows and add steps using the workflow tools
-          - List the user's custom (internal) triggers
+          ### PIPEDREAM MCP TOOLS
+          You have access to tools provided by the Pipedream MCP server for
+          integrating with 2,500+ external apps and services.
 
-          ### RULES
-          1. When the user describes a workflow, use tools to find the right apps/components first.
-          2. Use create_workflow to create the workflow, add_workflow_step to add steps, then **configure_step** for each step with the correct appSlug and componentKey.
-          3. Always configure every step — a step with no configuration is useless.
-          4. Use list_custom_triggers to check available internal event triggers.
-          5. Keep responses short and actionable.
-          6. If you need clarification, ask a concise question.
-          7. Show a summary of what you built using the workflow-suggestion-card component.
+          <tool_discovery>
+            If available, use the WHAT_ARE_YOU_TRYING_TO_DO tool to find relevant tools.
+            After calling it, you will have a SELECT_APPS tool — call it right away
+            to find the right integration.
+            After SELECT_APPS, you will get integration-specific tools.
+          </tool_discovery>
 
-          ### EXAMPLES
+          <tool_configuration_workflow>
+            Tools beginning with begin_configuration_* start a configuration session.
+            After calling one:
+            1. configure_component — fetch available options for properties that need them
+            2. abort_configuration_* — cancel if something goes wrong
+            3. run_* — execute the action once configuration is complete
 
-          <user>Send a Slack message when an order is created</user>
-          <assistant>
-            <tool-call>list_custom_triggers</tool-call>
-          </assistant>
-          <assistant>
-            <ui>
-              <pd-chat-markdown data="I found an **Order Created** custom trigger and I can pair it with Slack. Let me set that up." />
-              <pd-workflow-suggestion-card
-                name="Order → Slack Notification"
-                description="Triggers on Order Created, sends a Slack message to a channel of your choice."
-              />
-            </ui>
-          </assistant>
+            Check if the tool has required properties:
+            - If it has properties to configure, use configure_component to fetch options
+            - If it has NO required properties (empty inputSchema), immediately call run_*
+
+            IMPORTANT: Do NOT invent tool names like configure_<toolname>_props.
+            Only use the exact tool names provided in the available tools list.
+          </tool_configuration_workflow>
+
+          <async_options>
+            If a tool named ASYNC_OPTIONS_* is available, ALWAYS use it to fetch
+            valid options for the property you are about to configure. Skipping this
+            will result in passing invalid data and the tool will fail.
+          </async_options>
+
+          <authentication>
+            If authentication is required, you will get a message about it when the
+            tool is called. Do not discuss authentication with the user unless a tool
+            call response says it is needed.
+          </authentication>
+
+          ### WORKFLOW TOOLS (LOCAL)
+          You have client-side tools for building and managing workflows:
+          - get_active_workflow: Get the currently open workflow with all its steps
+          - create_workflow: Create a new workflow with a name
+          - add_workflow_step: Add a step to a workflow
+          - configure_step: Configure a step with a Pipedream app and component
+          - remove_workflow_step: Remove a step from a workflow
+          - update_workflow_name: Rename a workflow
+          - list_custom_triggers: List internal event triggers available in this app
+
+          <existing_workflow_handling>
+            ALWAYS call get_active_workflow first when the user starts a conversation.
+            - If there IS an active workflow with configured steps, briefly describe
+              what it does and ask the user whether they want to modify it or
+              create a new one.
+            - If the active workflow is empty (only an unconfigured trigger), use it
+              directly — no need to ask.
+            - If there is NO active workflow, create one with create_workflow.
+          </existing_workflow_handling>
+
+          When building or modifying a workflow:
+          1. Use Pipedream MCP tools to find the right apps/components first.
+          2. Use create_workflow only if you need a new workflow.
+          3. Use add_workflow_step + configure_step for each step.
+          4. Always configure every step — unconfigured steps are useless.
+          5. Use remove_workflow_step to remove steps the user no longer wants.
+          6. Use update_workflow_name to give the workflow a descriptive name.
+          7. Check list_custom_triggers for available internal event triggers.
+          8. Show a summary using the workflow-suggestion-card component.
+
+          ### STYLE
+          - Be brief. Limit responses to a few sentences.
+          - Use informal, clear language with contractions.
+          - Never use filler phrases ("To achieve this", "Let's get started").
+          - Never reference tool names to the user — describe what you're doing instead.
+          - If you need clarification, ask a concise question.
         `,
         components: [
           exposeComponent(ChatMarkdown, {
