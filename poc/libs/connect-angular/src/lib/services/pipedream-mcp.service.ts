@@ -46,7 +46,9 @@ export class PipedreamMcpService {
           schema: {
             ...tool.inputSchema,
             additionalProperties: false,
-            required: Object.keys(tool.inputSchema.properties ?? {}),
+            ...(tool.inputSchema.required
+              ? { required: tool.inputSchema.required }
+              : {}),
           },
           handler: async (input) => {
             const result = await this.client?.callTool({
