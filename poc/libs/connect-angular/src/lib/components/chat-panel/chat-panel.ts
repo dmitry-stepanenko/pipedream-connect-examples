@@ -234,18 +234,18 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly configureStepTool = createTool({
     name: 'configure_step',
     description:
-      'Configure a workflow step with a Pipedream app and component. ' +
-      'Call this after create_workflow / add_workflow_step to populate the step ' +
-      'with the chosen trigger or action. Provide the app slug (e.g. "slack_v2") ' +
-      'and the component key (e.g. "slack_v2-send-message-to-channel").',
+      'Configure a workflow step (trigger or action) with a Pipedream app and component. ' +
+      'Works for BOTH trigger steps and action steps. Provide the app slug and component key. ' +
+      'For triggers, use trigger-type components (e.g. "schedule-custom-interval" for schedules). ' +
+      'For actions, use action-type components (e.g. "slack_v2-send-message").',
     schema: s.object('ConfigureStepInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to configure'),
       appSlug: s.string(
-        'The Pipedream app name_slug (e.g. "github", "slack_v2")',
+        'The Pipedream app name_slug (e.g. "github", "slack_v2", "schedule")',
       ),
       componentKey: s.string(
-        'The Pipedream component key (e.g. "github-list-repos")',
+        'The Pipedream component key (e.g. "github-list-repos", "schedule-custom-interval")',
       ),
     }),
     handler: async (input) => {
@@ -262,11 +262,54 @@ export class ChatPanelComponent implements AfterViewInit {
         configuredProps: {},
       };
       this.workflowService.configureStep(input.workflowId, input.stepId, data);
+
+      // Detect auth requirements from configurableProps
+      const props = component.configurableProps ?? [];
+      const authApps = props
+        .filter((p: any) => p.type === 'app')
+        .map((p: any) => p.app as string);
+      const requiredProps = props
+        .filter((p: any) => p.type !== 'app' && !p.optional)
+        .map((p: any) => ({ name: p.name, label: p.label ?? p.name, type: p.type }));
+
       return {
         success: true,
         app: app.name,
         component: component.name,
+        componentType: component.componentType ?? 'action',
+        requiresAccountConnection: authApps.length > 0,
+        accountsToConnect: authApps,
+        requiredProperties: requiredProps,
       };
+    },
+  });
+
+  private readonly listComponentsTool = createTool({
+    name: 'list_app_components',
+    description:
+      'List available Pipedream components (actions or triggers) for a given app. ' +
+      'Use this to discover the correct component keys BEFORE calling configure_step. ' +
+      'Returns component name, key, and type for each match.',
+    schema: s.object('ListComponentsInput', {
+      appSlug: s.string('The Pipedream app name_slug (e.g. "google_calendar", "slack_v2", "schedule")'),
+      componentType: s.string('Filter by type: "action" or "trigger". Pass empty string to list all.'),
+    }),
+    handler: async (input) => {
+      const type = input.componentType === 'action' || input.componentType === 'trigger'
+        ? input.componentType
+        : undefined;
+      const response = await this.pdClient.listComponents({
+        app: input.appSlug,
+        componentType: type,
+        limit: 30,
+      });
+      const components = ((response as any).data ?? []).map((c: any) => ({
+        key: c.key,
+        name: c.name,
+        description: c.description,
+        type: c.componentType,
+      }));
+      return { app: input.appSlug, components };
     },
   });
 
@@ -340,6 +383,7 @@ export class ChatPanelComponent implements AfterViewInit {
     this.getActiveWorkflowTool,
     this.createWorkflowTool,
     this.addStepTool,
+    this.listComponentsTool,
     this.configureStepTool,
     this.removeStepTool,
     this.updateWorkflowNameTool,
@@ -403,7 +447,8 @@ export class ChatPanelComponent implements AfterViewInit {
           - get_active_workflow: Get the currently open workflow with all its steps
           - create_workflow: Create a new workflow with a name
           - add_workflow_step: Add a step to a workflow
-          - configure_step: Configure a step with a Pipedream app and component
+          - list_app_components: List available components for an app (discover correct keys)
+          - configure_step: Configure a step (trigger OR action) with a Pipedream app and component
           - remove_workflow_step: Remove a step from a workflow
           - update_workflow_name: Rename a workflow
           - list_custom_triggers: List internal event triggers available in this app
@@ -418,15 +463,60 @@ export class ChatPanelComponent implements AfterViewInit {
             - If there is NO active workflow, create one with create_workflow.
           </existing_workflow_handling>
 
+          <trigger_configuration>
+            The trigger (step index 0) defines what starts the workflow.
+            - If the user's request clearly implies a trigger (e.g. "on schedule",
+              "when an order is created", "every Monday"), configure it using
+              configure_step with the appropriate component.
+            - For schedule-based: appSlug "schedule", componentKey
+              "schedule-custom-interval" or similar.
+            - For internal events: check list_custom_triggers for a match.
+            - For app-event triggers: search via MCP tools.
+            - If the trigger is unclear or the user hasn't decided, ask briefly
+              what should start the workflow. It's OK to leave it unconfigured
+              if the user is still figuring it out.
+          </trigger_configuration>
+
+          <account_connection_requirements>
+            When configure_step returns requiresAccountConnection: true, it means the
+            user must connect their account (OAuth) for that app before the step can
+            run. ALWAYS tell the user which accounts they need to connect. Example:
+            "You'll need to connect your Google Calendar and Slack accounts in the
+            step settings before running this workflow."
+            List ALL steps that need account connections at the end of the summary.
+          </account_connection_requirements>
+
+          <component_key_discovery>
+            NEVER guess or invent component keys for configure_step. Component
+            keys must come from one of these sources:
+            - list_app_components — the PRIMARY way to discover keys. Call it
+              with the app slug and optionally a componentType filter to get the
+              exact keys available for that app.
+            - A previous successful configure_step result.
+            - The get_active_workflow result (componentKey field).
+            ALWAYS call list_app_components before configure_step for a new step.
+          </component_key_discovery>
+
+          <error_handling>
+            If configure_step fails (e.g. 404 component not found):
+            - Do NOT create a new step. The existing step is still there and empty.
+            - Retry configure_step on the SAME step with a corrected component key.
+            - Use MCP tool discovery to find the correct key if you guessed wrong.
+            - If after discovery you still can't find the component, tell the user
+              and ask what they'd like to use instead.
+          </error_handling>
+
           When building or modifying a workflow:
-          1. Use Pipedream MCP tools to find the right apps/components first.
+          1. Use list_app_components to discover correct component keys before configuring.
           2. Use create_workflow only if you need a new workflow.
-          3. Use add_workflow_step + configure_step for each step.
-          4. Always configure every step — unconfigured steps are useless.
-          5. Use remove_workflow_step to remove steps the user no longer wants.
-          6. Use update_workflow_name to give the workflow a descriptive name.
-          7. Check list_custom_triggers for available internal event triggers.
-          8. Show a summary using the workflow-suggestion-card component.
+          3. Configure the trigger step if the user's intent is clear.
+          4. Use add_workflow_step + configure_step for each action step.
+          5. Always configure every action step — unconfigured steps are useless.
+          6. Use remove_workflow_step to remove steps the user no longer wants.
+          7. Use update_workflow_name to give the workflow a descriptive name.
+          8. Check list_custom_triggers for available internal event triggers.
+          9. After building, list any steps that require account connections.
+          10. Show a summary using the workflow-suggestion-card component.
 
           ### STYLE
           - Be brief. Limit responses to a few sentences.
