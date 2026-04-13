@@ -4,16 +4,22 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
+  runInInjectionContext,
+  signal,
+  untracked,
   viewChild,
+  type WritableSignal,
 } from '@angular/core';
 import {
   exposeComponent,
   RenderMessageComponent,
   uiChatResource,
   createTool,
+  type UiChatResourceRef,
 } from '@hashbrownai/angular';
-import { prompt, s } from '@hashbrownai/core';
+import { type Chat, prompt, s } from '@hashbrownai/core';
 import { PipedreamMcpService } from '../../services/pipedream-mcp.service';
 import { PipedreamClientService } from '../../services/pipedream-client.service';
 import { WorkflowService } from '../../services/workflow.service';
@@ -80,7 +86,7 @@ export class WorkflowSuggestionCard {
   template: `
     <div class="pd-chat-panel">
       <div class="pd-chat-messages" #scrollContainer>
-        @for (msg of chat.value(); track $index) {
+        @for (msg of chat().value(); track $index) {
           @switch (msg.role) {
             @case ('user') {
               <div class="pd-msg pd-msg--user">
@@ -102,7 +108,7 @@ export class WorkflowSuggestionCard {
             }
           }
         }
-        @if (chat.isLoading()) {
+        @if (chat().isLoading()) {
           <div class="pd-msg pd-msg--assistant">
             <div class="pd-bubble pd-bubble--loading">Thinking...</div>
           </div>
@@ -120,7 +126,7 @@ export class WorkflowSuggestionCard {
         <button
           type="button"
           class="pd-btn pd-btn--send"
-          [disabled]="chat.isLoading()"
+          [disabled]="chat().isLoading()"
           (click)="onSend(inputEl)"
         >
           Send
@@ -131,6 +137,7 @@ export class WorkflowSuggestionCard {
   styleUrl: './chat-panel.css',
 })
 export class ChatPanelComponent implements AfterViewInit {
+  private readonly injector = inject(Injector);
   private readonly mcpService = inject(PipedreamMcpService);
   private readonly pdClient = inject(PipedreamClientService);
   private readonly workflowService = inject(WorkflowService);
@@ -141,13 +148,58 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly textarea =
     viewChild<ElementRef<HTMLTextAreaElement>>('inputEl');
 
+  // Chat is a writable signal so we can recreate it when MCP tools change.
+  // Pipedream MCP dynamically adds/removes tools based on conversation state
+  // (e.g. WHAT_ARE_YOU_TRYING_TO_DO → SELECT_APPS → begin_configuration_*),
+  // so the chat resource must be recreated to pick up new tools.
+  readonly chat: WritableSignal<UiChatResourceRef<any>>;
+
+  private pendingToolRefresh = false;
+
   constructor() {
+    // Initialize the chat (runs in constructor = injection context is available)
+    this.chat = signal(this.initChat());
+
+    // Auto-scroll when messages change
     effect(() => {
-      this.chat.value();
+      this.chat().value();
       requestAnimationFrame(() => {
         const el = this.scrollContainer().nativeElement;
         el.scrollTop = el.scrollHeight;
       });
+    });
+
+    // Watch for MCP tool changes — reset chat with updated tools.
+    // Skip the first emission (initial tool load is already captured by initChat).
+    let firstSkipped = false;
+    effect(() => {
+      this.mcpService.tools();
+      if (!firstSkipped) {
+        firstSkipped = true;
+        return;
+      }
+      untracked(() => {
+        if (this.chat().isLoading()) {
+          // Can't reset mid-generation — defer until the loop finishes.
+          this.pendingToolRefresh = true;
+        } else {
+          this.resetChat({ messages: this.chat().value() });
+        }
+      });
+    });
+
+    // When loading finishes with a pending tool refresh, apply it.
+    effect(() => {
+      const loading = this.chat().isLoading();
+      if (!loading && this.pendingToolRefresh) {
+        untracked(() => {
+          this.pendingToolRefresh = false;
+          this.resetChat({
+            messages: this.chat().value(),
+            resend: true,
+          });
+        });
+      }
     });
   }
 
@@ -225,72 +277,107 @@ export class ChatPanelComponent implements AfterViewInit {
     },
   });
 
-  // ── Chat resource ───────────────────────────────────────────────────────
+  private readonly clientTools = [
+    this.createWorkflowTool,
+    this.addStepTool,
+    this.configureStepTool,
+    this.listCustomTriggersTool,
+  ];
 
-  chat = uiChatResource({
-    model: 'gpt-4o@2025-01-01-preview',
-    debugName: 'workflow-chat',
-    system: prompt`
-      ### ROLE & TONE
-      You are **Workflow Builder Assistant**, a concise AI that helps users
-      build automated workflows using Pipedream integrations and custom triggers.
+  // ── Chat lifecycle ──────────────────────────────────────────────────────
 
-      ### WHAT YOU CAN DO
-      - Search for Pipedream apps and components using the available MCP tools
-      - Create workflows and add steps using the workflow tools
-      - List the user's custom (internal) triggers
+  private initChat(messages?: Chat.Message<any, any>[]): UiChatResourceRef<any> {
+    return runInInjectionContext(this.injector, () => {
+      return uiChatResource({
+        model: 'gpt-4o@2025-01-01-preview',
+        debugName: 'workflow-chat',
+        messages,
+        system: prompt`
+          ### ROLE & TONE
+          You are **Workflow Builder Assistant**, a concise AI that helps users
+          build automated workflows using Pipedream integrations and custom triggers.
 
-      ### RULES
-      1. When the user describes a workflow, use tools to find the right apps/components first.
-      2. Use create_workflow to create the workflow, add_workflow_step to add steps, then **configure_step** for each step with the correct appSlug and componentKey.
-      3. Always configure every step — a step with no configuration is useless.
-      4. Use list_custom_triggers to check available internal event triggers.
-      5. Keep responses short and actionable.
-      6. If you need clarification, ask a concise question.
-      7. Show a summary of what you built using the workflow-suggestion-card component.
+          ### WHAT YOU CAN DO
+          - Search for Pipedream apps and components using the available MCP tools
+          - Create workflows and add steps using the workflow tools
+          - List the user's custom (internal) triggers
 
-      ### EXAMPLES
+          ### RULES
+          1. When the user describes a workflow, use tools to find the right apps/components first.
+          2. Use create_workflow to create the workflow, add_workflow_step to add steps, then **configure_step** for each step with the correct appSlug and componentKey.
+          3. Always configure every step — a step with no configuration is useless.
+          4. Use list_custom_triggers to check available internal event triggers.
+          5. Keep responses short and actionable.
+          6. If you need clarification, ask a concise question.
+          7. Show a summary of what you built using the workflow-suggestion-card component.
 
-      <user>Send a Slack message when an order is created</user>
-      <assistant>
-        <tool-call>list_custom_triggers</tool-call>
-      </assistant>
-      <assistant>
-        <ui>
-          <pd-chat-markdown data="I found an **Order Created** custom trigger and I can pair it with Slack. Let me set that up." />
-          <pd-workflow-suggestion-card
-            name="Order → Slack Notification"
-            description="Triggers on Order Created, sends a Slack message to a channel of your choice."
-          />
-        </ui>
-      </assistant>
-    `,
-    components: [
-      exposeComponent(ChatMarkdown, {
-        description: 'Show markdown text to the user',
-        input: {
-          data: s.streaming.string('The markdown content'),
-        },
-      }),
-      exposeComponent(WorkflowSuggestionCard, {
-        description:
-          'Show a workflow suggestion card summarizing a workflow that was created or proposed',
-        input: {
-          name: s.string('Workflow name'),
-          description: s.streaming.string(
-            'Short description of what the workflow does',
-          ),
-        },
-      }),
-    ],
-    tools: [
-      ...this.mcpService.tools(),
-      this.createWorkflowTool,
-      this.addStepTool,
-      this.configureStepTool,
-      this.listCustomTriggersTool,
-    ],
-  });
+          ### EXAMPLES
+
+          <user>Send a Slack message when an order is created</user>
+          <assistant>
+            <tool-call>list_custom_triggers</tool-call>
+          </assistant>
+          <assistant>
+            <ui>
+              <pd-chat-markdown data="I found an **Order Created** custom trigger and I can pair it with Slack. Let me set that up." />
+              <pd-workflow-suggestion-card
+                name="Order → Slack Notification"
+                description="Triggers on Order Created, sends a Slack message to a channel of your choice."
+              />
+            </ui>
+          </assistant>
+        `,
+        components: [
+          exposeComponent(ChatMarkdown, {
+            description: 'Show markdown text to the user',
+            input: {
+              data: s.streaming.string('The markdown content'),
+            },
+          }),
+          exposeComponent(WorkflowSuggestionCard, {
+            description:
+              'Show a workflow suggestion card summarizing a workflow that was created or proposed',
+            input: {
+              name: s.string('Workflow name'),
+              description: s.streaming.string(
+                'Short description of what the workflow does',
+              ),
+            },
+          }),
+        ],
+        tools: [
+          ...this.mcpService.tools(),
+          ...this.clientTools,
+        ],
+      });
+    });
+  }
+
+  private resetChat(options?: {
+    messages?: Chat.Message<any, any>[];
+    resend?: boolean;
+  }) {
+    const current = this.chat();
+    if (current) this.stopChat(current);
+    this.chat.set(this.initChat(options?.messages));
+    if (options?.resend) {
+      this.chat().resendMessages();
+    }
+  }
+
+  private async stopChat(chat: UiChatResourceRef<any>) {
+    // Retry stop() — hashbrown may throw if it's mid-generation
+    for (let attempt = 0; attempt < 200; attempt++) {
+      try {
+        chat.stop();
+        break;
+      } catch {
+        await new Promise((res) => setTimeout(res, 50));
+      }
+    }
+  }
+
+  // ── Public API ──────────────────────────────────────────────────────────
 
   ngAfterViewInit() {
     this.mcpService.connect();
@@ -298,11 +385,11 @@ export class ChatPanelComponent implements AfterViewInit {
   }
 
   sendMessage(message: string) {
-    this.chat.sendMessage({ role: 'user', content: message });
+    this.chat().sendMessage({ role: 'user', content: message });
   }
 
   retryMessages() {
-    this.chat.resendMessages();
+    this.chat().resendMessages();
   }
 
   protected onEnter(event: Event, textarea: HTMLTextAreaElement) {
@@ -314,7 +401,7 @@ export class ChatPanelComponent implements AfterViewInit {
 
   protected onSend(textarea: HTMLTextAreaElement) {
     const value = textarea.value.trim();
-    if (!value || this.chat.isLoading()) return;
+    if (!value || this.chat().isLoading()) return;
     this.sendMessage(value);
     textarea.value = '';
   }

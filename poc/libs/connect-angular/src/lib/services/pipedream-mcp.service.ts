@@ -5,6 +5,8 @@ import type { Chat } from '@hashbrownai/core';
 import { createTool } from '@hashbrownai/angular';
 import { PIPEDREAM_CONFIG } from '../tokens/pipedream-config.token';
 
+const TOOL_TIMEOUT_MS = 180_000; // 3 minutes, matching Pipedream reference
+
 @Injectable({ providedIn: 'root' })
 export class PipedreamMcpService {
   private readonly config = inject(PIPEDREAM_CONFIG);
@@ -36,6 +38,19 @@ export class PipedreamMcpService {
       },
     }));
 
+    await this.refreshTools();
+    this.connected.set(true);
+  }
+
+  /**
+   * Re-fetches the tool list from the MCP server and updates the tools signal.
+   * Called after initial connection and after each tool execution, because
+   * Pipedream MCP dynamically adds/removes tools based on the conversation state
+   * (e.g. WHAT_ARE_YOU_TRYING_TO_DO → SELECT_APPS → begin_configuration_* → run_*).
+   */
+  async refreshTools(): Promise<void> {
+    if (!this.client) return;
+
     const { tools: mcpTools } = await this.client.listTools();
 
     const tools = mcpTools.map((tool) => {
@@ -51,10 +66,11 @@ export class PipedreamMcpService {
               : {}),
           },
           handler: async (input) => {
-            const result = await this.client?.callTool({
-              name: tool.name,
-              arguments: input,
-            });
+            const result = await this.executeTool(tool.name, input);
+            // Refresh tools after each call — Pipedream MCP changes available
+            // tools based on conversation state (e.g. after SELECT_APPS,
+            // new begin_configuration_* tools appear).
+            await this.refreshTools();
             return result;
           },
         });
@@ -62,7 +78,6 @@ export class PipedreamMcpService {
     });
 
     this.tools.set(tools);
-    this.connected.set(true);
   }
 
   async disconnect() {
@@ -71,6 +86,27 @@ export class PipedreamMcpService {
       this.client = undefined;
       this.connected.set(false);
       this.tools.set([]);
+    }
+  }
+
+  private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+    if (!this.client) {
+      throw new Error('MCP client not connected');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS);
+
+    try {
+      const result = await this.client.callTool({ name, arguments: args });
+      return result;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Tool "${name}" timed out after ${TOOL_TIMEOUT_MS / 1000}s`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
