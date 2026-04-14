@@ -10,4 +10,10 @@
     "PIPEDREAM_PROJECT_ENVIRONMENT": "development",
     "MCP_SERVER": "https://remote.mcp.pipedream.net",
   },
+  "kv_namespaces": [
+    {
+      "binding": "WORKFLOWS",
+      "id": "",
+    },
+  ],
 }

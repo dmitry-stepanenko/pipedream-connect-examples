@@ -1,24 +1,16 @@
 import { Hono } from 'hono';
-import { PipedreamClient } from '@pipedream/sdk/server';
+import type { PipedreamClient } from '@pipedream/sdk/server';
 import { HashbrownAzure } from '@hashbrownai/azure';
 import type { Chat } from '@hashbrownai/core';
 import type { ENV_VARS } from './env-vars';
 import { configureCors } from './utils/util-cors';
+import { createPipedreamClient } from './utils/pipedream';
+import { workflows } from './routes/workflows';
+import { webhooks } from './routes/webhooks';
 
 const app = new Hono<{ Bindings: ENV_VARS }>();
 
 app.use('*', configureCors());
-
-function createPipedreamClient(env: ENV_VARS) {
-  return new PipedreamClient({
-    projectId: env.PIPEDREAM_PROJECT_ID,
-    projectEnvironment: (env.PIPEDREAM_PROJECT_ENVIRONMENT ?? 'development') as
-      | 'development'
-      | 'production',
-    clientId: env.PIPEDREAM_CLIENT_ID,
-    clientSecret: env.PIPEDREAM_CLIENT_SECRET,
-  });
-}
 
 async function pdMcpHeaders(
   pd: PipedreamClient,
@@ -194,5 +186,10 @@ app.delete('/api/mcp', async (c) => {
     return c.json({ error: 'MCP proxy cleanup failed' }, 502);
   }
 });
+
+// ── Workflow & Webhook routes ──────────────────────────────────────────────
+
+app.route('/api/workflows', workflows);
+app.route('/api/webhooks', webhooks);
 
 export default app;
