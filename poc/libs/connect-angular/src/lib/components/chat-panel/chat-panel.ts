@@ -213,9 +213,9 @@ export class ChatPanelComponent implements AfterViewInit {
     schema: s.object('CreateWorkflowInput', {
       name: s.string('The name of the workflow'),
     }),
-    handler: (input) => {
-      const workflow = this.workflowService.createWorkflow(input.name);
-      return Promise.resolve({ workflowId: workflow.id });
+    handler: async (input) => {
+      const workflow = await this.workflowService.createWorkflow(input.name);
+      return { workflowId: workflow.id };
     },
   });
 
@@ -226,9 +226,9 @@ export class ChatPanelComponent implements AfterViewInit {
     schema: s.object('AddStepInput', {
       workflowId: s.string('The workflow ID'),
     }),
-    handler: (input) => {
-      const step = this.workflowService.addStep(input.workflowId);
-      return Promise.resolve({ stepId: step.id });
+    handler: async (input) => {
+      const step = await this.workflowService.addStep(input.workflowId);
+      return { stepId: step.id };
     },
   });
 

@@ -1,8 +1,13 @@
 import { inject, Injectable, signal, computed } from '@angular/core';
-import type { Workflow, WorkflowStep, WorkflowStepData, StepOutputSchema, PipedreamStep } from '../models/workflow.model';
+import type {
+  Workflow,
+  WorkflowStep,
+  WorkflowStepData,
+  StepOutputSchema,
+  PipedreamStep,
+} from '../models/workflow.model';
 import { PipedreamClientService } from './pipedream-client.service';
-
-const STORAGE_KEY = 'pd_workflows';
+import { WorkflowApiService } from './workflow-api.service';
 
 export interface TestStepResult {
   success: boolean;
@@ -15,21 +20,23 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function now(): string {
-  return new Date().toISOString();
-}
-
 @Injectable({ providedIn: 'root' })
 export class WorkflowService {
-  // ── State ──────────────────────────────────────────────────────────────────
+  // ── Dependencies ──────────────────────────────────────────────────────────
 
   private readonly pdClient = inject(PipedreamClientService);
-  private readonly _workflows = signal<Workflow[]>(this.loadFromStorage());
+  private readonly api = inject(WorkflowApiService);
+
+  // ── State ─────────────────────────────────────────────────────────────────
+
+  private readonly _workflows = signal<Workflow[]>([]);
   private readonly _activeWorkflowId = signal<string | null>(null);
+  private readonly _loading = signal(false);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
   readonly workflows = this._workflows.asReadonly();
+  readonly loading = this._loading.asReadonly();
 
   readonly activeWorkflow = computed(() => {
     const id = this._activeWorkflowId();
@@ -38,40 +45,48 @@ export class WorkflowService {
 
   readonly activeSteps = computed(() => this.activeWorkflow()?.steps ?? []);
 
+  // ── Load from server ──────────────────────────────────────────────────────
+
+  async loadWorkflows(): Promise<void> {
+    this._loading.set(true);
+    try {
+      const workflows = await this.api.listWorkflows();
+      this._workflows.set(workflows);
+    } catch (err) {
+      console.error('Failed to load workflows:', err);
+    } finally {
+      this._loading.set(false);
+    }
+  }
+
   // ── Workflow CRUD ─────────────────────────────────────────────────────────
 
-  createWorkflow(name = 'New Workflow'): Workflow {
-    const workflow: Workflow = {
-      id: generateId(),
-      name,
-      description: '',
-      steps: [{ id: generateId(), type: 'trigger', data: null }],
-      createdAt: now(),
-      updatedAt: now(),
-    };
+  async createWorkflow(name = 'New Workflow'): Promise<Workflow> {
+    const workflow = await this.api.createWorkflow(name);
     this._workflows.update((list) => [...list, workflow]);
     this._activeWorkflowId.set(workflow.id);
-    // Don't persist yet — empty workflows with only a blank trigger
-    // are written to storage once a step gets configured, a step is
-    // added, or the workflow is renamed.
     return workflow;
   }
 
-  updateWorkflow(id: string, patch: Partial<Pick<Workflow, 'name' | 'description'>>) {
+  async updateWorkflow(
+    id: string,
+    patch: Partial<Pick<Workflow, 'name' | 'description'>>,
+  ) {
     this._workflows.update((list) =>
-      list.map((w) =>
-        w.id === id ? { ...w, ...patch, updatedAt: now() } : w
-      )
+      list.map((w) => (w.id === id ? { ...w, ...patch } : w)),
     );
-    this.persist();
+    const workflow = this._workflows().find((w) => w.id === id);
+    if (workflow) {
+      await this.api.saveWorkflow(workflow);
+    }
   }
 
-  deleteWorkflow(id: string) {
+  async deleteWorkflow(id: string) {
     this._workflows.update((list) => list.filter((w) => w.id !== id));
     if (this._activeWorkflowId() === id) {
       this._activeWorkflowId.set(null);
     }
-    this.persist();
+    await this.api.deleteWorkflow(id);
   }
 
   setActiveWorkflow(id: string | null) {
@@ -80,7 +95,7 @@ export class WorkflowService {
 
   // ── Step management ───────────────────────────────────────────────────────
 
-  addStep(workflowId: string): WorkflowStep {
+  async addStep(workflowId: string): Promise<WorkflowStep> {
     const step: WorkflowStep = {
       id: generateId(),
       type: 'action',
@@ -89,108 +104,122 @@ export class WorkflowService {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId
-          ? { ...w, steps: [...w.steps, step], updatedAt: now() }
-          : w
-      )
+          ? { ...w, steps: [...w.steps, step] }
+          : w,
+      ),
     );
-    this.persist();
+    await this.persist(workflowId);
     return step;
   }
 
-  removeStep(workflowId: string, stepId: string) {
+  async removeStep(workflowId: string, stepId: string) {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId
-          ? {
-              ...w,
-              steps: w.steps.filter((s) => s.id !== stepId),
-              updatedAt: now(),
-            }
-          : w
-      )
+          ? { ...w, steps: w.steps.filter((s) => s.id !== stepId) }
+          : w,
+      ),
     );
-    this.persist();
+    await this.persist(workflowId);
   }
 
-  /**
-   * Update the data for a specific step (app, component, configuredProps or customTriggerId).
-   */
-  configureStep(workflowId: string, stepId: string, data: WorkflowStepData | null) {
+  async configureStep(
+    workflowId: string,
+    stepId: string,
+    data: WorkflowStepData | null,
+  ) {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId
           ? {
               ...w,
               steps: w.steps.map((s) =>
-                s.id === stepId ? { ...s, data } : s
+                s.id === stepId ? { ...s, data } : s,
               ),
-              updatedAt: now(),
             }
-          : w
-      )
+          : w,
+      ),
     );
-    this.persist();
+    await this.persist(workflowId);
   }
 
-  /**
-   * Store the inferred output schema for a step after a successful test run.
-   */
-  setStepOutputSchema(workflowId: string, stepId: string, schema: StepOutputSchema | null) {
+  async setStepOutputSchema(
+    workflowId: string,
+    stepId: string,
+    schema: StepOutputSchema | null,
+  ) {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId
           ? {
               ...w,
               steps: w.steps.map((s) =>
-                s.id === stepId ? { ...s, outputSchema: schema, tested: true } : s
+                s.id === stepId
+                  ? { ...s, outputSchema: schema, tested: true }
+                  : s,
               ),
-              updatedAt: now(),
             }
-          : w
-      )
+          : w,
+      ),
     );
-    this.persist();
+    await this.persist(workflowId);
   }
 
-  private setStepTestStatus(workflowId: string, stepId: string, tested: boolean) {
+  private setStepTestStatus(
+    workflowId: string,
+    stepId: string,
+    tested: boolean,
+  ) {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId
           ? {
               ...w,
               steps: w.steps.map((s) =>
-                s.id === stepId ? { ...s, tested } : s
+                s.id === stepId ? { ...s, tested } : s,
               ),
-              updatedAt: now(),
             }
-          : w
-      )
+          : w,
+      ),
     );
-    this.persist();
   }
 
   // ── Step testing ──────────────────────────────────────────────────────────
 
-  /**
-   * Execute (test) a configured Pipedream step, inspect the result, and store
-   * the output schema on success. Returns a structured result for callers.
-   */
-  async testStep(workflowId: string, stepId: string): Promise<TestStepResult> {
+  async testStep(
+    workflowId: string,
+    stepId: string,
+  ): Promise<TestStepResult> {
     const workflow = this._workflows().find((w) => w.id === workflowId);
-    if (!workflow) return { success: false, error: 'Workflow not found', outputSchema: null, sampleOutput: null };
+    if (!workflow)
+      return {
+        success: false,
+        error: 'Workflow not found',
+        outputSchema: null,
+        sampleOutput: null,
+      };
 
     const step = workflow.steps.find((s) => s.id === stepId);
     if (!step?.data || step.data.source !== 'pipedream') {
-      return { success: false, error: 'Step must be configured before it can be tested.', outputSchema: null, sampleOutput: null };
+      return {
+        success: false,
+        error: 'Step must be configured before it can be tested.',
+        outputSchema: null,
+        sampleOutput: null,
+      };
     }
 
     const pdStep = step.data as PipedreamStep;
     const componentKey = pdStep.component.key;
     if (!componentKey) {
-      return { success: false, error: 'Component has no key', outputSchema: null, sampleOutput: null };
+      return {
+        success: false,
+        error: 'Component has no key',
+        outputSchema: null,
+        sampleOutput: null,
+      };
     }
 
-    // Reset tested status before running — a failed re-test should clear it
     this.setStepTestStatus(workflowId, stepId, false);
 
     try {
@@ -217,8 +246,13 @@ export class WorkflowService {
 
       const returnValue = typedResult.ret ?? typedResult.exports ?? null;
       const schema = this.inferSchema(returnValue);
-      this.setStepOutputSchema(workflowId, stepId, schema);
-      return { success: true, error: null, outputSchema: schema, sampleOutput: returnValue };
+      await this.setStepOutputSchema(workflowId, stepId, schema);
+      return {
+        success: true,
+        error: null,
+        outputSchema: schema,
+        sampleOutput: returnValue,
+      };
     } catch (err: unknown) {
       return {
         success: false,
@@ -233,7 +267,9 @@ export class WorkflowService {
     if (value == null) return null;
     if (typeof value !== 'object' || Array.isArray(value)) return null;
     const schema: StepOutputSchema = {};
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, val] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
       if (val === null) schema[key] = 'null';
       else if (Array.isArray(val)) schema[key] = 'array';
       else if (typeof val === 'object') schema[key] = 'object';
@@ -245,44 +281,57 @@ export class WorkflowService {
     return schema;
   }
 
-  /**
-   * Reorder steps using indices (from Angular CDK drag-drop CdkDragDrop event).
-   * The trigger step (index 0) cannot be moved past index 0.
-   */
-  reorderSteps(workflowId: string, previousIndex: number, currentIndex: number) {
+  // ── Reorder ───────────────────────────────────────────────────────────────
+
+  async reorderSteps(
+    workflowId: string,
+    previousIndex: number,
+    currentIndex: number,
+  ) {
     this._workflows.update((list) =>
       list.map((w) => {
         if (w.id !== workflowId) return w;
         const steps = [...w.steps];
         const [moved] = steps.splice(previousIndex, 1);
         steps.splice(currentIndex, 0, moved);
-        // Ensure first step is always marked as trigger
         const retyped = steps.map((s, i) => ({
           ...s,
           type: (i === 0 ? 'trigger' : 'action') as 'trigger' | 'action',
         }));
-        return { ...w, steps: retyped, updatedAt: now() };
-      })
+        return { ...w, steps: retyped };
+      }),
     );
-    this.persist();
+    await this.persist(workflowId);
+  }
+
+  // ── Publish / Unpublish ───────────────────────────────────────────────────
+
+  async publishWorkflow(id: string): Promise<Workflow> {
+    const workflow = await this.api.publishWorkflow(id);
+    this._workflows.update((list) =>
+      list.map((w) => (w.id === id ? workflow : w)),
+    );
+    return workflow;
+  }
+
+  async unpublishWorkflow(id: string): Promise<Workflow> {
+    const workflow = await this.api.unpublishWorkflow(id);
+    this._workflows.update((list) =>
+      list.map((w) => (w.id === id ? workflow : w)),
+    );
+    return workflow;
   }
 
   // ── Persistence ───────────────────────────────────────────────────────────
 
-  private persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this._workflows()));
-    } catch {
-      // Ignore storage errors (e.g. private browsing quota)
-    }
-  }
-
-  private loadFromStorage(): Workflow[] {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as Workflow[]) : [];
-    } catch {
-      return [];
+  private async persist(workflowId: string) {
+    const workflow = this._workflows().find((w) => w.id === workflowId);
+    if (workflow) {
+      try {
+        await this.api.saveWorkflow(workflow);
+      } catch (err) {
+        console.error('Failed to save workflow:', err);
+      }
     }
   }
 }

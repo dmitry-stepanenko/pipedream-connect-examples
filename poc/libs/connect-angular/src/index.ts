@@ -22,12 +22,14 @@ export type {
   Workflow,
   WorkflowStep,
   WorkflowStepData,
+  WorkflowStatus,
   PipedreamStep,
   CustomTriggerStep,
 } from './lib/models/workflow.model';
 
-// Workflow service
+// Workflow services
 export { WorkflowService } from './lib/services/workflow.service';
+export { WorkflowApiService } from './lib/services/workflow-api.service';
 
 // Workflow UI components
 export { WorkflowListComponent } from './lib/components/workflow-list/workflow-list';

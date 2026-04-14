@@ -44,12 +44,22 @@ export interface WorkflowStep {
 
 // ── Workflow ──────────────────────────────────────────────────────────────────
 
+export type WorkflowStatus = 'draft' | 'published' | 'error';
+
 export interface Workflow {
   id: string;
   name: string;
   description: string;
   /** Ordered list: first step must be type 'trigger', rest are 'action' */
   steps: WorkflowStep[];
+  status: WorkflowStatus;
+  externalUserId: string;
+  /** Pipedream deployed trigger ID (dc_xxx), set when published */
+  deployedTriggerId?: string;
+  /** Custom trigger ID from step[0], indexed for lookup */
+  customTriggerId?: string;
+  /** Last execution error */
+  lastError?: string;
   createdAt: string; // ISO date string
   updatedAt: string;
 }

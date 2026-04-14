@@ -1,5 +1,5 @@
 {
-  "name": "api",
+  "name": "workflows-api",
   "main": "src/index.ts",
   "account_id": "",
   "route": "",
@@ -13,7 +13,7 @@
   "kv_namespaces": [
     {
       "binding": "WORKFLOWS",
-      "id": "",
+      "id": "2ecc9e85224d407ba94b71801d34f2e1",
     },
   ],
 }

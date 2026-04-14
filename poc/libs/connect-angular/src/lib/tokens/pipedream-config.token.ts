@@ -5,6 +5,8 @@ export interface PipedreamConnectConfig {
   tokenEndpointUrl: string;
   /** The external user ID to scope all SDK calls to */
   externalUserId: string;
+  /** Base URL for workflow API, e.g. 'http://localhost:8787' */
+  apiBaseUrl: string;
   /** Optional: override Pipedream API host (e.g. for staging) */
   apiHost?: string;
 }

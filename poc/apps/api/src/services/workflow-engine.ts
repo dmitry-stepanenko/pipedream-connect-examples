@@ -1,8 +1,5 @@
 import type { PipedreamClient } from '@pipedream/sdk/server';
-import type {
-  Workflow,
-  PipedreamStep,
-} from '../models/workflow.model';
+import type { Workflow, PipedreamStep } from '../models/workflow.model';
 import type { ENV_VARS } from '../env-vars';
 import {
   getWorkflow,
@@ -31,12 +28,14 @@ export async function publishWorkflow(
   if (!trigger?.data) throw new Error('Trigger not configured');
 
   const actionSteps = workflow.steps.slice(1).filter((s) => s.data);
-  if (actionSteps.length === 0)
-    throw new Error('No action steps configured');
+  if (actionSteps.length === 0) throw new Error('No action steps configured');
 
   if (trigger.data.source === 'pipedream') {
     const pdStep = trigger.data as PipedreamStep;
-    const workerBaseUrl = env.WORKER_BASE_URL ?? 'http://localhost:8787';
+    const workerBaseUrl = env.WORKER_BASE_URL;
+    if (actionSteps.length === 0) {
+      throw new Error('No base url configured');
+    }
     const webhookUrl = `${workerBaseUrl}/api/webhooks/pipedream/${workflow.id}`;
 
     const response = await pd.triggers.deploy({

@@ -75,6 +75,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideConnectAngular({
       tokenEndpointUrl: `${environment.apiUrl}/api/pipedream/token`,
+      apiBaseUrl: environment.apiUrl,
       // In a real app this comes from auth -- hardcoded here for demo
       externalUserId: 'demo-user-1',
     }),

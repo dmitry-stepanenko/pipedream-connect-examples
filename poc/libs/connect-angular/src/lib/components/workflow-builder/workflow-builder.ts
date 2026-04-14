@@ -35,6 +35,8 @@ export class WorkflowBuilderComponent {
   protected readonly panelTab = signal<'details' | 'chat'>('details');
   protected readonly testingStepId = signal<string | null>(null);
   protected readonly testError = signal<string | null>(null);
+  protected readonly publishing = signal(false);
+  protected readonly publishError = signal<string | null>(null);
 
   protected get workflow() {
     return this.workflowService.activeWorkflow();
@@ -62,15 +64,28 @@ export class WorkflowBuilderComponent {
     return this.customTriggers.find((t) => t.id === d.customTriggerId)?.name ?? d.customTriggerId;
   });
 
+  protected readonly isPublished = computed(
+    () => this.workflow?.status === 'published',
+  );
+
+  protected readonly canPublish = computed((): boolean => {
+    const w = this.workflow;
+    if (!w || w.status === 'published') return false;
+    const trigger = w.steps[0];
+    if (!trigger?.data) return false;
+    const actions = w.steps.slice(1).filter((s) => s.data);
+    return actions.length > 0;
+  });
+
   protected selectStep(stepId: string) {
     this.selectedStepId.set(stepId);
     this.panelTab.set('details');
   }
 
-  protected addStep() {
+  protected async addStep() {
     const w = this.workflow;
     if (!w) return;
-    const step = this.workflowService.addStep(w.id);
+    const step = await this.workflowService.addStep(w.id);
     this.selectedStepId.set(step.id);
   }
 
@@ -142,5 +157,37 @@ export class WorkflowBuilderComponent {
       this.testError.set(result.error);
     }
     this.testingStepId.set(null);
+  }
+
+  protected async publish() {
+    const w = this.workflow;
+    if (!w) return;
+    this.publishing.set(true);
+    this.publishError.set(null);
+    try {
+      await this.workflowService.publishWorkflow(w.id);
+    } catch (err) {
+      this.publishError.set(
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      this.publishing.set(false);
+    }
+  }
+
+  protected async unpublish() {
+    const w = this.workflow;
+    if (!w) return;
+    this.publishing.set(true);
+    this.publishError.set(null);
+    try {
+      await this.workflowService.unpublishWorkflow(w.id);
+    } catch (err) {
+      this.publishError.set(
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      this.publishing.set(false);
+    }
   }
 }

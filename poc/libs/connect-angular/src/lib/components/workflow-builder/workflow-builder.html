@@ -7,22 +7,51 @@
     <!-- Left: step chain -->
     <div class="pd-builder-chain">
       <div class="pd-builder-header">
-        @if (editingName()) {
-          <input
-            #nameInput
-            class="pd-workflow-name-input"
-            [value]="workflow.name"
-            (blur)="saveName(nameInput.value)"
-            (keydown.enter)="saveName(nameInput.value)"
-            (keydown.escape)="editingName.set(false)"
-            autofocus
-          />
-        } @else {
-          <h2 class="pd-workflow-name" (click)="editingName.set(true)" title="Click to rename">
-            {{ workflow.name }}
-          </h2>
-        }
+        <div class="pd-builder-header__left">
+          @if (editingName()) {
+            <input
+              #nameInput
+              class="pd-workflow-name-input"
+              [value]="workflow.name"
+              (blur)="saveName(nameInput.value)"
+              (keydown.enter)="saveName(nameInput.value)"
+              (keydown.escape)="editingName.set(false)"
+              autofocus
+            />
+          } @else {
+            <h2 class="pd-workflow-name" (click)="editingName.set(true)" title="Click to rename">
+              {{ workflow.name }}
+            </h2>
+          }
+          <span class="pd-status-badge pd-status-badge--{{ workflow.status }}">
+            {{ workflow.status }}
+          </span>
+        </div>
+        <div class="pd-builder-header__right">
+          @if (isPublished()) {
+            <button
+              type="button"
+              class="pd-btn pd-btn--ghost"
+              [disabled]="publishing()"
+              (click)="unpublish()"
+            >
+              @if (publishing()) { Unpublishing... } @else { Unpublish }
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="pd-btn pd-btn--primary"
+              [disabled]="!canPublish() || publishing()"
+              (click)="publish()"
+            >
+              @if (publishing()) { Publishing... } @else { Publish }
+            </button>
+          }
+        </div>
       </div>
+      @if (publishError()) {
+        <div class="pd-publish-error">{{ publishError() }}</div>
+      }
 
       <div
         class="pd-step-chain"

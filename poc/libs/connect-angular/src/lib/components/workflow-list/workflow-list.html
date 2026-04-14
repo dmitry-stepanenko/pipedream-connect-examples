@@ -21,7 +21,12 @@
         >
           <div class="pd-workflow-item__info">
             <strong>{{ workflow.name }}</strong>
-            <small>{{ workflow.steps.length }} step(s)</small>
+            <small>
+              {{ workflow.steps.length }} step(s)
+              @if (workflow.status === 'published') {
+                <span class="pd-status-badge pd-status-badge--published">published</span>
+              }
+            </small>
           </div>
           <button
             type="button"

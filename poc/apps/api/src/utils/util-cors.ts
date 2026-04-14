@@ -1,7 +1,7 @@
 import { cors } from 'hono/cors';
 
 export function configureCors(
-  allowMethods = ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowMethods = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 ) {
   return cors({
     origin: (origin, c) => {
@@ -12,7 +12,7 @@ export function configureCors(
       return null;
     },
     allowMethods,
-    allowHeaders: ['Content-Type', 'mcp-session-id', 'x-pd-mcp-chat-id'],
+    allowHeaders: ['Content-Type', 'mcp-session-id', 'x-pd-mcp-chat-id', 'mcp-protocol-version'],
     exposeHeaders: ['Mcp-Session-Id'],
   });
 }
