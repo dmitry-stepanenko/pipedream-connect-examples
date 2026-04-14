@@ -24,10 +24,22 @@ export interface CustomTriggerStep {
 
 export type WorkflowStepData = PipedreamStep | CustomTriggerStep;
 
+/**
+ * Inferred schema describing the shape of a step's output ($return_value).
+ * Built by inspecting the actual return value after a test run.
+ */
+export interface StepOutputSchema {
+  [key: string]: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' | 'unknown';
+}
+
 export interface WorkflowStep {
   id: string;
   type: 'trigger' | 'action';
   data: WorkflowStepData | null; // null = step added but not yet configured
+  /** Schema inferred from the last successful test run */
+  outputSchema?: StepOutputSchema | null;
+  /** Whether this step has been tested at least once */
+  tested?: boolean;
 }
 
 // ── Workflow ──────────────────────────────────────────────────────────────────

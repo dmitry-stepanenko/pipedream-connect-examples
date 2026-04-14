@@ -33,6 +33,8 @@ export class WorkflowBuilderComponent {
   protected readonly editingName = signal(false);
   protected readonly selectedStepId = signal<string | null>(null);
   protected readonly panelTab = signal<'details' | 'chat'>('details');
+  protected readonly testingStepId = signal<string | null>(null);
+  protected readonly testError = signal<string | null>(null);
 
   protected get workflow() {
     return this.workflowService.activeWorkflow();
@@ -122,5 +124,23 @@ export class WorkflowBuilderComponent {
       ...current,
       configuredProps,
     });
+  }
+
+  protected readonly canTestSelectedStep = computed((): boolean => {
+    const pd = this.selectedPipedreamData();
+    return !!pd?.component?.key;
+  });
+
+  protected async testStep() {
+    const w = this.workflow;
+    const step = this.selectedStep();
+    if (!w || !step) return;
+    this.testingStepId.set(step.id);
+    this.testError.set(null);
+    const result = await this.workflowService.testStep(w.id, step.id);
+    if (!result.success) {
+      this.testError.set(result.error);
+    }
+    this.testingStepId.set(null);
   }
 }

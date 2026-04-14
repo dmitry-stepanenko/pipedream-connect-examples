@@ -6,6 +6,7 @@ import {
   PipedreamClient,
 } from '@pipedream/sdk/browser';
 import type { CreateTokenResponse } from '@pipedream/sdk';
+import type { ConfigurableProp } from '@pipedream/sdk';
 import { PIPEDREAM_CONFIG } from '../tokens/pipedream-config.token';
 
 @Injectable({ providedIn: 'root' })
@@ -126,6 +127,52 @@ export class PipedreamClientService implements OnDestroy {
    */
   configureProps(componentKey: string, configuredProps: Record<string, unknown>) {
     return this.reloadProps(componentKey, configuredProps);
+  }
+
+  // ── Action execution (testing) ────────────────────────────────────────────
+
+  /**
+   * Execute (test) an action with the given configured props.
+   * Automatically wraps app-type props as `{ authProvisionId }` for the API.
+   * Returns the action's exports and return value.
+   */
+  runAction(
+    componentKey: string,
+    configuredProps: Record<string, unknown>,
+    configurableProps: ConfigurableProp[],
+  ) {
+    const props = this.normalizeAppProps(configuredProps, configurableProps)
+
+    return this.client.actions.run({
+      id: componentKey,
+      externalUserId: this.config.externalUserId,
+      configuredProps: props,
+    });
+  }
+
+  /**
+   * Wraps bare-string app-type props into `{ authProvisionId: value }` objects
+   * as expected by the Pipedream API.
+   */
+  private normalizeAppProps(
+    configuredProps: Record<string, unknown>,
+    configurableProps: ConfigurableProp[],
+  ): Record<string, unknown> {
+    const appPropNames = new Set(
+      configurableProps
+        .filter((p) => (p as { type: string }).type === 'app')
+        .map((p) => p.name),
+    );
+
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(configuredProps)) {
+      if (appPropNames.has(key) && typeof value === 'string') {
+        result[key] = { authProvisionId: value };
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   ngOnDestroy(): void {

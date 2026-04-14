@@ -24,7 +24,8 @@ import { PipedreamMcpService } from '../../services/pipedream-mcp.service';
 import { PipedreamClientService } from '../../services/pipedream-client.service';
 import { WorkflowService } from '../../services/workflow.service';
 import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
-import type { PipedreamStep } from '../../models/workflow.model';
+import type { PipedreamStep, StepOutputSchema } from '../../models/workflow.model';
+import { getTriggerSchema, KNOWN_TRIGGER_SCHEMAS } from '../../models/trigger-schemas';
 
 // ── Exposed components the AI can render ────────────────────────────────────
 
@@ -203,7 +204,7 @@ export class ChatPanelComponent implements AfterViewInit {
     });
   }
 
-  // ── Client-side tools ───────────────────────────────────────────────────
+  // ── Client-side workflow tools ──────────────────────────────────────────
 
   private readonly createWorkflowTool = createTool({
     name: 'create_workflow',
@@ -263,7 +264,17 @@ export class ChatPanelComponent implements AfterViewInit {
       };
       this.workflowService.configureStep(input.workflowId, input.stepId, data);
 
-      // Detect auth requirements from configurableProps
+      // Auto-set output schema for known trigger types
+      const triggerSchema = getTriggerSchema(input.componentKey);
+      if (triggerSchema) {
+        // Convert paths to a flat StepOutputSchema for storage
+        const flatSchema: StepOutputSchema = {};
+        for (const [path, type] of Object.entries(triggerSchema.paths)) {
+          flatSchema[path] = type as StepOutputSchema[string];
+        }
+        this.workflowService.setStepOutputSchema(input.workflowId, input.stepId, flatSchema);
+      }
+
       const props = component.configurableProps ?? [];
       const authApps = props
         .filter((p: any) => p.type === 'app')
@@ -280,7 +291,65 @@ export class ChatPanelComponent implements AfterViewInit {
         requiresAccountConnection: authApps.length > 0,
         accountsToConnect: authApps,
         requiredProperties: requiredProps,
+        triggerEventSchema: triggerSchema
+          ? {
+              name: triggerSchema.name,
+              exampleReferences: triggerSchema.exampleReferences,
+            }
+          : null,
+        allProperties: props
+          .filter((p: any) => p.type !== 'app')
+          .map((p: any) => ({
+            name: p.name,
+            label: p.label ?? p.name,
+            type: p.type,
+            description: p.description ?? '',
+            optional: !!p.optional,
+            default: p.default,
+            options: p.options ?? null,
+            remoteOptions: !!p.remoteOptions,
+          })),
       };
+    },
+  });
+
+  private readonly setStepPropsTool = createTool({
+    name: 'set_step_props',
+    description:
+      'Set property values on an already-configured workflow step. Call this AFTER ' +
+      'configure_step to fill in the step\'s required and optional properties. ' +
+      'Pass a JSON string in propsJson where keys are property names (from configure_step\'s ' +
+      'allProperties response) and values are the desired settings. ' +
+      'Example propsJson: \'{"text": "Hello world", "channelType": "Public Channel", "conversation": "#general"}\'. ' +
+      'You can call this multiple times to update props incrementally.',
+    schema: s.object('SetStepPropsInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID to set properties on'),
+      propsJson: s.string(
+        'A JSON string of property key-value pairs. Keys are property names from configure_step\'s allProperties. ' +
+        'Values must match the property types (string, integer, boolean, etc.).',
+      ),
+    }),
+    handler: (input): Promise<{ success: boolean; error: string | null; configuredProps: Record<string, unknown> | null }> => {
+      let props: Record<string, unknown>;
+      try {
+        props = JSON.parse(input.propsJson);
+      } catch {
+        return Promise.resolve({ success: false, error: 'Invalid JSON in propsJson', configuredProps: null });
+      }
+      const workflow = this.workflowService.workflows().find((w) => w.id === input.workflowId);
+      if (!workflow) return Promise.resolve({ success: false, error: 'Workflow not found', configuredProps: null });
+      const step = workflow.steps.find((st) => st.id === input.stepId);
+      if (!step?.data || step.data.source !== 'pipedream') {
+        return Promise.resolve({ success: false, error: 'Step not configured yet — call configure_step first', configuredProps: null });
+      }
+      const current = step.data as PipedreamStep;
+      const merged = { ...current.configuredProps, ...props };
+      this.workflowService.configureStep(input.workflowId, input.stepId, {
+        ...current,
+        configuredProps: merged,
+      });
+      return Promise.resolve({ success: true, error: null, configuredProps: merged });
     },
   });
 
@@ -345,6 +414,8 @@ export class ChatPanelComponent implements AfterViewInit {
             component: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).component?.name : null,
             componentKey: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).component?.key : null,
             customTriggerId: step.data?.source === 'custom' ? step.data.customTriggerId : null,
+            tested: step.tested ?? false,
+            outputSchema: step.outputSchema ?? null,
           })),
         },
       });
@@ -379,12 +450,50 @@ export class ChatPanelComponent implements AfterViewInit {
     },
   });
 
+  private readonly testStepTool = createTool({
+    name: 'test_step',
+    description:
+      'Test a configured workflow step to discover its output schema. ' +
+      'The step can only be tested if it has been configured (configure_step + set_step_props). ' +
+      'Some steps may also require manual setup by the user (e.g. connecting an account) before testing will succeed. ' +
+      'After a successful test, the output schema is stored on the step and you can reference its data ' +
+      'in downstream steps via {{steps.STEP_NAME.$return_value.field}}.',
+    schema: s.object('TestStepInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID to test'),
+    }),
+    handler: async (input) => {
+      return this.workflowService.testStep(input.workflowId, input.stepId);
+    },
+  });
+
+  /** Build a prompt fragment documenting known trigger event schemas. */
+  private buildTriggerSchemaPrompt(): string {
+    return KNOWN_TRIGGER_SCHEMAS.map((schema) => {
+      const pathList = Object.entries(schema.paths)
+        .map(([path, type]) => `  - steps.trigger.event.${path} (${type})`)
+        .join('\n');
+      const examples = schema.exampleReferences
+        .map((ref) => `  - ${ref}`)
+        .join('\n');
+      return `
+              <trigger type="${schema.name}" components="${schema.componentKeys.join(', ')}">
+                Available paths:
+${pathList}
+                Example references:
+${examples}
+              </trigger>`;
+    }).join('\n');
+  }
+
   private readonly clientTools = [
     this.getActiveWorkflowTool,
     this.createWorkflowTool,
     this.addStepTool,
     this.listComponentsTool,
     this.configureStepTool,
+    this.setStepPropsTool,
+    this.testStepTool,
     this.removeStepTool,
     this.updateWorkflowNameTool,
     this.listCustomTriggersTool,
@@ -399,131 +508,190 @@ export class ChatPanelComponent implements AfterViewInit {
         debugName: 'workflow-chat',
         messages,
         system: prompt`
-          ### ROLE
-          You are **Workflow Builder Assistant**, a concise AI that helps users
-          build automated workflows using Pipedream integrations and custom triggers.
-          You run tasks that access and connect to web apps on behalf of the user.
+          <role>
+            You are Workflow Builder Assistant, an expert at assembling automated
+            workflows using Pipedream integrations and custom triggers. You help
+            users design multi-step workflows by configuring triggers and actions
+            from 2,500+ apps.
 
-          ### PIPEDREAM MCP TOOLS
-          You have access to tools provided by the Pipedream MCP server for
-          integrating with 2,500+ external apps and services.
+            You are powered by Pipedream Connect with managed authentication.
+            Credentials are encrypted and isolated, with no direct exposure to
+            AI models.
+          </role>
 
-          <tool_discovery>
-            If available, use the WHAT_ARE_YOU_TRYING_TO_DO tool to find relevant tools.
-            After calling it, you will have a SELECT_APPS tool — call it right away
-            to find the right integration.
-            After SELECT_APPS, you will get integration-specific tools.
-          </tool_discovery>
+          <todays_date>${new Date().toISOString()}</todays_date>
 
-          <tool_configuration_workflow>
-            Tools beginning with begin_configuration_* start a configuration session.
-            After calling one:
-            1. configure_component — fetch available options for properties that need them
-            2. abort_configuration_* — cancel if something goes wrong
-            3. run_* — execute the action once configuration is complete
+          <tools>
+            You have two sets of tools:
 
-            Check if the tool has required properties:
-            - If it has properties to configure, use configure_component to fetch options
-            - If it has NO required properties (empty inputSchema), immediately call run_*
+            <workflow_tools>
+              Client-side tools for building and managing workflows:
+              - get_active_workflow — get the current workflow with all its steps and output schemas
+              - create_workflow — create a new workflow with a name
+              - add_workflow_step — add a step to a workflow
+              - list_app_components — discover correct component keys for an app
+              - configure_step — configure a step with a Pipedream app and component
+              - set_step_props — set property values on a configured step
+              - test_step — execute a step to discover its output schema (REQUIRED before referencing outputs)
+              - remove_workflow_step — remove a step from a workflow
+              - update_workflow_name — rename a workflow
+              - list_custom_triggers — list internal event triggers
+            </workflow_tools>
 
-            IMPORTANT: Do NOT invent tool names like configure_<toolname>_props.
-            Only use the exact tool names provided in the available tools list.
-          </tool_configuration_workflow>
+            <mcp_tools>
+              Pipedream MCP server tools for discovering apps and integrations.
 
-          <async_options>
-            If a tool named ASYNC_OPTIONS_* is available, ALWAYS use it to fetch
-            valid options for the property you are about to configure. Skipping this
-            will result in passing invalid data and the tool will fail.
-          </async_options>
+              If available, use WHAT_ARE_YOU_TRYING_TO_DO to find relevant tools.
+              After calling it, call SELECT_APPS right away to discover which
+              integration tools are available.
 
-          <authentication>
-            If authentication is required, you will get a message about it when the
-            tool is called. Do not discuss authentication with the user unless a tool
-            call response says it is needed.
-          </authentication>
+              <tool_configuration_workflow>
+                Tools beginning with begin_configuration_* start a config session:
+                1. configure_component — fetch options for properties that need them
+                2. abort_configuration_* — cancel if something goes wrong
+                3. run_* — execute once configuration is complete
 
-          ### WORKFLOW TOOLS (LOCAL)
-          You have client-side tools for building and managing workflows:
-          - get_active_workflow: Get the currently open workflow with all its steps
-          - create_workflow: Create a new workflow with a name
-          - add_workflow_step: Add a step to a workflow
-          - list_app_components: List available components for an app (discover correct keys)
-          - configure_step: Configure a step (trigger OR action) with a Pipedream app and component
-          - remove_workflow_step: Remove a step from a workflow
-          - update_workflow_name: Rename a workflow
-          - list_custom_triggers: List internal event triggers available in this app
+                If it has NO required properties (empty inputSchema), call run_*
+                immediately. Do NOT invent tool names — only use exact names from
+                the available tools list.
+              </tool_configuration_workflow>
 
-          <existing_workflow_handling>
-            ALWAYS call get_active_workflow first when the user starts a conversation.
-            - If there IS an active workflow with configured steps, briefly describe
-              what it does and ask the user whether they want to modify it or
-              create a new one.
-            - If the active workflow is empty (only an unconfigured trigger), use it
-              directly — no need to ask.
-            - If there is NO active workflow, create one with create_workflow.
-          </existing_workflow_handling>
+              If a tool named ASYNC_OPTIONS_* is available, ALWAYS use it to fetch
+              valid options before configuring a property. Skipping this causes
+              invalid data.
 
-          <trigger_configuration>
-            The trigger (step index 0) defines what starts the workflow.
-            - If the user's request clearly implies a trigger (e.g. "on schedule",
-              "when an order is created", "every Monday"), configure it using
-              configure_step with the appropriate component.
-            - For schedule-based: appSlug "schedule", componentKey
-              "schedule-custom-interval" or similar.
-            - For internal events: check list_custom_triggers for a match.
-            - For app-event triggers: search via MCP tools.
-            - If the trigger is unclear or the user hasn't decided, ask briefly
-              what should start the workflow. It's OK to leave it unconfigured
-              if the user is still figuring it out.
-          </trigger_configuration>
+              If authentication is required, you'll get a message about it when
+              the tool is called. Don't discuss auth unless a tool response says
+              it's needed.
+            </mcp_tools>
+          </tools>
 
-          <account_connection_requirements>
-            When configure_step returns requiresAccountConnection: true, it means the
-            user must connect their account (OAuth) for that app before the step can
-            run. ALWAYS tell the user which accounts they need to connect. Example:
-            "You'll need to connect your Google Calendar and Slack accounts in the
-            step settings before running this workflow."
-            List ALL steps that need account connections at the end of the summary.
-          </account_connection_requirements>
+          <workflow_building>
+            <existing_workflow_handling>
+              ALWAYS call get_active_workflow first when the user starts a
+              conversation.
+              - If there IS an active workflow with configured steps, briefly
+                describe what it does and ask whether to modify it or start new.
+              - If the active workflow is empty (only unconfigured trigger), use
+                it directly.
+              - If there is NO active workflow, create one with create_workflow.
+            </existing_workflow_handling>
 
-          <component_key_discovery>
-            NEVER guess or invent component keys for configure_step. Component
-            keys must come from one of these sources:
-            - list_app_components — the PRIMARY way to discover keys. Call it
-              with the app slug and optionally a componentType filter to get the
-              exact keys available for that app.
-            - A previous successful configure_step result.
-            - The get_active_workflow result (componentKey field).
-            ALWAYS call list_app_components before configure_step for a new step.
-          </component_key_discovery>
+            <trigger_configuration>
+              The trigger (step index 0) defines what starts the workflow.
+              - If the request implies a trigger ("on schedule", "when an order
+                is created"), configure it with configure_step.
+              - For schedule-based: appSlug "schedule", componentKey
+                "schedule-custom-interval" or similar.
+              - For internal events: check list_custom_triggers.
+              - For app-event triggers: use MCP tool discovery.
+              - If the trigger is unclear, ask briefly. It's OK to leave it
+                unconfigured while the user decides.
+            </trigger_configuration>
 
-          <error_handling>
-            If configure_step fails (e.g. 404 component not found):
-            - Do NOT create a new step. The existing step is still there and empty.
-            - Retry configure_step on the SAME step with a corrected component key.
-            - Use MCP tool discovery to find the correct key if you guessed wrong.
-            - If after discovery you still can't find the component, tell the user
-              and ask what they'd like to use instead.
-          </error_handling>
+            <component_key_discovery>
+              NEVER guess or invent component keys. They must come from:
+              - list_app_components — the PRIMARY way. Call it with the app slug
+                before calling configure_step for a new step.
+              - A previous successful configure_step result.
+              - The get_active_workflow result (componentKey field).
+            </component_key_discovery>
 
-          When building or modifying a workflow:
-          1. Use list_app_components to discover correct component keys before configuring.
-          2. Use create_workflow only if you need a new workflow.
-          3. Configure the trigger step if the user's intent is clear.
-          4. Use add_workflow_step + configure_step for each action step.
-          5. Always configure every action step — unconfigured steps are useless.
-          6. Use remove_workflow_step to remove steps the user no longer wants.
-          7. Use update_workflow_name to give the workflow a descriptive name.
-          8. Check list_custom_triggers for available internal event triggers.
-          9. After building, list any steps that require account connections.
-          10. Show a summary using the workflow-suggestion-card component.
+            <error_handling>
+              If configure_step fails (e.g. 404):
+              - Do NOT create a new step. The existing step is still there.
+              - Retry configure_step on the SAME step with a corrected key.
+              - Use list_app_components or MCP discovery to find the correct key.
+              - If you still can't find it, tell the user and ask what to use.
+            </error_handling>
 
-          ### STYLE
-          - Be brief. Limit responses to a few sentences.
-          - Use informal, clear language with contractions.
-          - Never use filler phrases ("To achieve this", "Let's get started").
-          - Never reference tool names to the user — describe what you're doing instead.
-          - If you need clarification, ask a concise question.
+            <account_connections>
+              When configure_step returns requiresAccountConnection: true, tell
+              the user which accounts need to be connected. List ALL steps that
+              need connections at the end of the workflow summary.
+            </account_connections>
+
+            <property_configuration>
+              After calling configure_step, you MUST call set_step_props to fill in
+              property values for the step. configure_step returns allProperties —
+              use that to know which props exist and their types/descriptions.
+
+              - For required properties: ALWAYS set a value. Ask the user if you
+                can't infer a reasonable default.
+              - For optional properties with sensible defaults: set them if the
+                user's request implies specific values.
+              - For properties with remoteOptions: true, note that those need
+                dynamic values (e.g., Slack channel IDs). Set them to the best
+                value you can infer from context (channel name, etc.).
+              - For properties with fixed options, pick the matching option value.
+
+              Example flow:
+              1. configure_step → returns allProperties with "text", "conversation"
+              2. set_step_props → { "text": "Weekly summary", "conversation": "#general" }
+            </property_configuration>
+
+            <building_sequence>
+              1. Call list_app_components to discover correct keys before configuring.
+              2. Use create_workflow only if you need a new one.
+              3. Configure the trigger step if the user's intent is clear.
+              4. Use add_workflow_step + configure_step for each action.
+              5. IMMEDIATELY call set_step_props after each configure_step to fill
+                 in property values — steps with empty props are not useful.
+              6. Always configure every action — unconfigured steps are useless.
+              7. Use remove_workflow_step to remove unwanted steps.
+              8. Use update_workflow_name to give it a descriptive name.
+              9. Check list_custom_triggers for internal event triggers.
+              10. After building, list steps that require account connections.
+              11. Show a summary using the workflow-suggestion-card component.
+            </building_sequence>
+          </workflow_building>
+
+          <step_references>
+            Pipedream step references use the syntax {{steps.STEP_NAME.field.path}}.
+            These are the ONLY way to pass data between workflow steps.
+
+            <rules>
+              - NEVER use computed expressions like moment(), Date.now(), new Date(),
+                Math.random(), or any JavaScript runtime code inside {{...}} references.
+                Only dot-path references to step data are valid.
+              - Trigger data: {{steps.trigger.event.FIELD_PATH}}
+              - Action output: {{steps.STEP_NAME.$return_value}} or
+                {{steps.STEP_NAME.$return_value.field}}
+              - Action exports: {{steps.STEP_NAME.EXPORT_NAME}}
+              - STEP_NAME is the component key with hyphens replaced by underscores
+                (e.g. component "google_calendar-list-events" → steps.google_calendar_list_events)
+            </rules>
+
+            <trigger_schemas>
+              For known trigger types, you can reference these fields immediately
+              WITHOUT testing:
+              ${this.buildTriggerSchemaPrompt()}
+            </trigger_schemas>
+
+            <action_output_discovery>
+              For action steps, you MUST discover the output schema before referencing it:
+              1. Configure the step fully (configure_step + set_step_props).
+              2. Ask the user to test the step: "I need to test this step to discover
+                 what data it returns. Should I run it now?"
+              3. Call test_step to execute it. This stores the output schema.
+              4. Use the returned outputSchema to construct valid references.
+
+              NEVER guess action output fields. If a step hasn't been tested
+              (tested: false in get_active_workflow), you don't know its output shape.
+              Ask the user to test it first.
+            </action_output_discovery>
+          </step_references>
+
+          <style_and_output>
+            - Use informal, friendly, but clear language.
+            - Always use the first person and contractions ("I'll", "you'll").
+            - NEVER refer to the user as "the user" or "the customer". Use "you".
+            - Be brief. Limit output to a few sentences.
+            - NEVER use filler phrases like "To achieve this" or "Let's get started".
+              Just do it.
+            - NEVER reference tool names — describe what you're doing instead.
+            - If you need clarification, ask a concise question.
+          </style_and_output>
         `,
         components: [
           exposeComponent(ChatMarkdown, {

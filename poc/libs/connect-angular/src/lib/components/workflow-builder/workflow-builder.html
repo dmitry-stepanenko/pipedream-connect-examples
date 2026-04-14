@@ -100,6 +100,30 @@
                   (configure)="onFormConfigure($event)"
                 />
               }
+
+              <!-- Test step button — only for configured Pipedream steps -->
+              @if (canTestSelectedStep()) {
+                <div class="pd-test-step-section">
+                  <button
+                    type="button"
+                    class="pd-btn pd-btn--primary"
+                    [disabled]="testingStepId() !== null"
+                    (click)="testStep()"
+                  >
+                    @if (testingStepId() === selectedStep()?.id) {
+                      Testing…
+                    } @else {
+                      ▶ Test Step
+                    }
+                  </button>
+                  @if (selectedStep()?.tested) {
+                    <small class="pd-test-status pd-test-status--ok">✓ Tested</small>
+                  }
+                  @if (testError()) {
+                    <small class="pd-test-status pd-test-status--error">{{ testError() }}</small>
+                  }
+                </div>
+              }
             } @else if (selectedCustomData()) {
               <div class="pd-panel-header">
                 <div>
