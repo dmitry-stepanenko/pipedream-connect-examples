@@ -1,0 +1,10 @@
+export type ENV_VARS = {
+  PIPEDREAM_CLIENT_ID: string;
+  PIPEDREAM_CLIENT_SECRET: string;
+  PIPEDREAM_PROJECT_ID: string;
+  PIPEDREAM_PROJECT_ENVIRONMENT?: string;
+  AZURE_OPENAI_API_KEY?: string;
+  AZURE_OPENAI_ENDPOINT?: string;
+  MCP_SERVER?: string;
+  ALLOWED_CORS_ORIGINS?: string;
+};

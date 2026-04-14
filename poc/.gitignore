@@ -11,6 +11,8 @@ node_modules
 # IDEs and editors
 /.idea
 .project
+.wrangler
+.dev.vars
 .classpath
 .c9/
 *.launch
