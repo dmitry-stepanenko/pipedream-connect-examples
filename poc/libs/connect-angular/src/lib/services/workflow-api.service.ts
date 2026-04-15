@@ -94,6 +94,14 @@ export class WorkflowApiService {
     return res.json();
   }
 
+  async listTriggerEvents(id: string, n = 10): Promise<{ events: unknown[] }> {
+    const res = await fetch(
+      `${this.baseUrl}/${id}/trigger-events?externalUserId=${encodeURIComponent(this.userId)}&n=${n}`,
+    );
+    if (!res.ok) throw new Error(`Failed to list trigger events: ${res.status}`);
+    return res.json();
+  }
+
   async listDeployedTriggers(): Promise<{ triggers: unknown[] }> {
     const res = await fetch(
       `${this.baseUrl}/deployed-triggers?externalUserId=${encodeURIComponent(this.userId)}`,

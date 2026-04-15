@@ -386,6 +386,89 @@
   border-radius: 3px;
 }
 
+/* Recent trigger events */
+.pd-trigger-events-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pd-trigger-events-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.pd-trigger-events-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.pd-trigger-events-empty {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  margin: 0.25rem 0 0;
+}
+
+.pd-trigger-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pd-trigger-event-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pd-trigger-event-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: #f9fafb;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.8rem;
+}
+
+.pd-trigger-event-summary:hover {
+  background: #f3f4f6;
+}
+
+.pd-trigger-event-id {
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.pd-trigger-event-ts {
+  flex: 1;
+  color: #374151;
+}
+
+.pd-trigger-event-chevron {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.pd-trigger-event-json {
+  margin: 0;
+  padding: 0.6rem;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  font-size: 0.75rem;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre;
+}
+
 /* Deployed Triggers debug section */
 .pd-deployed-triggers-section {
   margin-top: 1rem;

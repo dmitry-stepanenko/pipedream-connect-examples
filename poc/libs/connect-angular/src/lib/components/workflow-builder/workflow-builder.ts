@@ -4,6 +4,7 @@ import {
   DragDropModule,
 } from '@angular/cdk/drag-drop';
 import { FormsModule } from '@angular/forms';
+import { DatePipe, JsonPipe } from '@angular/common';
 import type { ConfiguredProps } from '@pipedream/sdk';
 import { WorkflowService } from '../../services/workflow.service';
 import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
@@ -19,6 +20,8 @@ import { ChatPanelComponent } from '../chat-panel/chat-panel';
   imports: [
     DragDropModule,
     FormsModule,
+    DatePipe,
+    JsonPipe,
     WorkflowStepComponent,
     StepPickerComponent,
     ComponentFormComponent,
@@ -47,6 +50,11 @@ export class WorkflowBuilderComponent {
 
   protected readonly loadingTriggers = signal(false);
   protected readonly deployedTriggers = signal<unknown[] | null>(null);
+
+  protected readonly loadingTriggerEvents = signal(false);
+  protected readonly triggerEvents = signal<unknown[] | null>(null);
+  protected readonly triggerEventsError = signal<string | null>(null);
+  protected readonly expandedEventId = signal<string | null>(null);
 
   protected get workflow() {
     return this.workflowService.activeWorkflow();
@@ -215,6 +223,25 @@ export class WorkflowBuilderComponent {
     } finally {
       this.emittingTestEvent.set(false);
     }
+  }
+
+  protected async loadTriggerEvents() {
+    const w = this.workflow;
+    if (!w) return;
+    this.loadingTriggerEvents.set(true);
+    this.triggerEventsError.set(null);
+    try {
+      const res = await this.workflowService.listTriggerEvents(w.id, 10);
+      this.triggerEvents.set(res.events);
+    } catch (err) {
+      this.triggerEventsError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.loadingTriggerEvents.set(false);
+    }
+  }
+
+  protected toggleEvent(id: string) {
+    this.expandedEventId.update((cur) => (cur === id ? null : id));
   }
 
   protected async loadDeployedTriggers() {

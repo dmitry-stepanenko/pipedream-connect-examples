@@ -206,6 +206,52 @@
                 </div>
               }
 
+              <!-- Recent trigger events — only for the trigger step when published -->
+              @if (selectedStep()?.type === 'trigger' && isPublished()) {
+                <div class="pd-trigger-events-section">
+                  <div class="pd-trigger-events-header">
+                    <span class="pd-trigger-events-title">Recent Events</span>
+                    <button
+                      type="button"
+                      class="pd-btn pd-btn--ghost pd-btn--sm"
+                      [disabled]="loadingTriggerEvents()"
+                      (click)="loadTriggerEvents()"
+                    >
+                      @if (loadingTriggerEvents()) { Loading… } @else { Refresh }
+                    </button>
+                  </div>
+                  @if (triggerEventsError()) {
+                    <small class="pd-test-status pd-test-status--error">{{ triggerEventsError() }}</small>
+                  }
+                  @if (triggerEvents(); as events) {
+                    @if (events.length === 0) {
+                      <p class="pd-trigger-events-empty">No events yet.</p>
+                    } @else {
+                      <div class="pd-trigger-events-list">
+                        @for (ev of events; track $any(ev).id) {
+                          <div class="pd-trigger-event-item">
+                            <button
+                              type="button"
+                              class="pd-trigger-event-summary"
+                              (click)="toggleEvent($any(ev).id)"
+                            >
+                              <code class="pd-trigger-event-id">{{ $any(ev).id }}</code>
+                              <span class="pd-trigger-event-ts">{{ $any(ev).ts | date:'medium' }}</span>
+                              <span class="pd-trigger-event-chevron">{{ expandedEventId() === $any(ev).id ? '▾' : '▸' }}</span>
+                            </button>
+                            @if (expandedEventId() === $any(ev).id) {
+                              <pre class="pd-trigger-event-json">{{ $any(ev).e | json }}</pre>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  } @else {
+                    <p class="pd-trigger-events-empty">Click Refresh to load events.</p>
+                  }
+                </div>
+              }
+
               <!-- Test step button — only for configured non-trigger Pipedream steps -->
               @if (canTestSelectedStep() && selectedStep()?.type !== 'trigger') {
                 <div class="pd-test-step-section">
