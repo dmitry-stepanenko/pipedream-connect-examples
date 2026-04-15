@@ -3,8 +3,8 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "module": "commonjs",
-    "moduleResolution": "node10",
-    "types": ["jest", "node"]
+    "moduleResolution": "bundler",
+    "types": ["jest", "node", "@cloudflare/workers-types"]
   },
   "include": [
     "jest.config.ts",
