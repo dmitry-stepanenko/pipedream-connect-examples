@@ -8,5 +8,5 @@ export type ENV_VARS = {
   MCP_SERVER?: string;
   ALLOWED_CORS_ORIGINS?: string;
   WORKFLOWS: KVNamespace;
-  WORKER_BASE_URL?: string;
+  WORKER_BASE_URL: string;
 };

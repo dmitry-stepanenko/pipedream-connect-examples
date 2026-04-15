@@ -9,6 +9,8 @@
   "vars": {
     "PIPEDREAM_PROJECT_ENVIRONMENT": "development",
     "MCP_SERVER": "https://remote.mcp.pipedream.net",
+    "WORKER_BASE_URL": "https://workflows-api.dmitry-stepanenko.workers.dev",
+    "ALLOWED_CORS_ORIGINS": "workflows-poc.pages.dev"
   },
   "kv_namespaces": [
     {
@@ -16,4 +18,13 @@
       "id": "2ecc9e85224d407ba94b71801d34f2e1",
     },
   ],
+  "secrets": {
+    "required": [
+      "PIPEDREAM_CLIENT_ID",
+      "PIPEDREAM_CLIENT_SECRET",
+      "PIPEDREAM_PROJECT_ID",
+      "AZURE_OPENAI_ENDPOINT",
+      "AZURE_OPENAI_API_KEY",
+    ],
+  },
 }
