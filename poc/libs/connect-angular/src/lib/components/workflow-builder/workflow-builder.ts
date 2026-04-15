@@ -56,6 +56,11 @@ export class WorkflowBuilderComponent {
   protected readonly triggerEventsError = signal<string | null>(null);
   protected readonly expandedEventId = signal<string | null>(null);
 
+  protected readonly loadingRuns = signal(false);
+  protected readonly executionRuns = signal<unknown[] | null>(null);
+  protected readonly executionRunsError = signal<string | null>(null);
+  protected readonly expandedRunId = signal<string | null>(null);
+
   protected get workflow() {
     return this.workflowService.activeWorkflow();
   }
@@ -201,7 +206,8 @@ export class WorkflowBuilderComponent {
     this.triggerResults.set(null);
     try {
       const res = await this.workflowService.triggerWorkflow(w.id);
-      this.triggerResults.set(res.results);
+      const run = res.run as { steps?: unknown[] };
+      this.triggerResults.set(run?.steps ?? null);
     } catch (err) {
       this.triggerError.set(err instanceof Error ? err.message : String(err));
     } finally {
@@ -242,6 +248,25 @@ export class WorkflowBuilderComponent {
 
   protected toggleEvent(id: string) {
     this.expandedEventId.update((cur) => (cur === id ? null : id));
+  }
+
+  protected toggleRun(id: string) {
+    this.expandedRunId.update((cur) => (cur === id ? null : id));
+  }
+
+  protected async loadExecutionRuns() {
+    const w = this.workflow;
+    if (!w) return;
+    this.loadingRuns.set(true);
+    this.executionRunsError.set(null);
+    try {
+      const res = await this.workflowService.listRuns(w.id, 20);
+      this.executionRuns.set(res.runs);
+    } catch (err) {
+      this.executionRunsError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.loadingRuns.set(false);
+    }
   }
 
   protected async loadDeployedTriggers() {

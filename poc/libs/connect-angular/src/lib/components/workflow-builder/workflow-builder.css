@@ -469,6 +469,70 @@
   white-space: pre;
 }
 
+/* Execution run items */
+.pd-run-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.pd-run-status--success { background: #d1fae5; color: #065f46; }
+.pd-run-status--error { background: #fee2e2; color: #991b1b; }
+.pd-run-status--running { background: #dbeafe; color: #1e40af; }
+
+.pd-run-source {
+  font-size: 0.7rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.pd-run-detail {
+  padding: 0.5rem 0.6rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pd-run-error {
+  font-size: 0.75rem;
+  color: #991b1b;
+  background: #fee2e2;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+}
+
+.pd-run-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+}
+.pd-run-step--success { background: #f0fdf4; }
+.pd-run-step--error { background: #fef2f2; }
+
+.pd-run-step__key {
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: #374151;
+}
+.pd-run-step__status {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.pd-run-step--success .pd-run-step__status { color: #065f46; }
+.pd-run-step--error .pd-run-step__status { color: #991b1b; }
+
+.pd-run-step__error {
+  font-size: 0.7rem;
+  color: #991b1b;
+  margin-left: auto;
+}
+
 /* Deployed Triggers debug section */
 .pd-deployed-triggers-section {
   margin-top: 1rem;

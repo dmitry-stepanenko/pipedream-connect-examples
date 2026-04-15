@@ -110,7 +110,7 @@ export class WorkflowApiService {
     return res.json();
   }
 
-  async triggerWorkflow(id: string): Promise<{ results: unknown[] }> {
+  async triggerWorkflow(id: string): Promise<{ run: unknown }> {
     const res = await fetch(`${this.baseUrl}/${id}/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -120,6 +120,14 @@ export class WorkflowApiService {
       const data = await res.json().catch(() => ({}));
       throw new Error((data as { error?: string }).error || `Failed to trigger: ${res.status}`);
     }
+    return res.json();
+  }
+
+  async listRuns(id: string, limit = 20): Promise<{ runs: unknown[] }> {
+    const res = await fetch(
+      `${this.baseUrl}/${id}/runs?externalUserId=${encodeURIComponent(this.userId)}&limit=${limit}`,
+    );
+    if (!res.ok) throw new Error(`Failed to list runs: ${res.status}`);
     return res.json();
   }
 

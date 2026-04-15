@@ -345,15 +345,16 @@ describe('executeWorkflow', () => {
       .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
       .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
 
-    const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
 
-    expect(results).toHaveLength(2);
-    expect(results[0]).toMatchObject({
+    expect(run.status).toBe('success');
+    expect(run.steps).toHaveLength(2);
+    expect(run.steps[0]).toMatchObject({
       stepId: calendarStep.id,
       componentKey: 'google_calendar-list-events',
       status: 'success',
     });
-    expect(results[1]).toMatchObject({
+    expect(run.steps[1]).toMatchObject({
       stepId: slackStep.id,
       componentKey: 'slack_v2-send-message',
       status: 'success',
@@ -363,10 +364,11 @@ describe('executeWorkflow', () => {
   it('stops execution and records error when a step throws', async () => {
     mockActionsRun.mockRejectedValueOnce(new Error('API quota exceeded'));
 
-    const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
 
-    expect(results).toHaveLength(1);
-    expect(results[0]).toMatchObject({
+    expect(run.status).toBe('error');
+    expect(run.steps).toHaveLength(1);
+    expect(run.steps[0]).toMatchObject({
       stepId: calendarStep.id,
       status: 'error',
       error: 'API quota exceeded',
@@ -382,10 +384,11 @@ describe('executeWorkflow', () => {
       exports: {},
     });
 
-    const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
 
-    expect(results).toHaveLength(1);
-    expect(results[0]).toMatchObject({
+    expect(run.status).toBe('error');
+    expect(run.steps).toHaveLength(1);
+    expect(run.steps[0]).toMatchObject({
       stepId: calendarStep.id,
       status: 'error',
       error: 'Bad Request',
@@ -400,10 +403,10 @@ describe('executeWorkflow', () => {
       exports: {},
     });
 
-    const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
 
-    expect(results[0].status).toBe('error');
-    expect(results[0].error).toBe('Step returned an error');
+    expect(run.steps[0].status).toBe('error');
+    expect(run.steps[0].error).toBe('Step returned an error');
   });
 
   it('resolves trigger interpolations when a triggerPayload is provided', async () => {

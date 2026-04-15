@@ -13,6 +13,10 @@ import {
   executeWorkflow,
   getTestTriggerEvent,
 } from '../services/workflow-engine';
+import {
+  listExecutionRuns,
+  getExecutionRun,
+} from '../services/execution-store';
 import { createPipedreamClient } from '../utils/pipedream';
 
 function generateId(): string {
@@ -212,8 +216,8 @@ workflows.post('/:id/trigger', async (c) => {
       (await getTestTriggerEvent(pd, workflow, externalUserId)) ?? {};
     console.log(JSON.stringify({ triggerPayload }, null, 2));
 
-    const results = await executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload);
-    return c.json({ results });
+    const run = await executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload, 'test');
+    return c.json({ run });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 400);
@@ -266,6 +270,43 @@ workflows.post('/:id/emit-test-event', async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 400);
   }
+});
+
+// List execution runs for a workflow
+workflows.get('/:id/runs', async (c) => {
+  const externalUserId = c.req.query('externalUserId');
+  const limit = Math.min(parseInt(c.req.query('limit') ?? '20', 10), 50);
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const runs = await listExecutionRuns(c.env.WORKFLOWS, workflow.id, limit);
+  return c.json({ runs });
+});
+
+// Get a single execution run
+workflows.get('/:id/runs/:runId', async (c) => {
+  const externalUserId = c.req.query('externalUserId');
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const run = await getExecutionRun(c.env.WORKFLOWS, c.req.param('runId'));
+  if (!run || run.workflowId !== workflow.id) {
+    return c.json({ error: 'Run not found' }, 404);
+  }
+
+  return c.json({ run });
 });
 
 export { workflows };

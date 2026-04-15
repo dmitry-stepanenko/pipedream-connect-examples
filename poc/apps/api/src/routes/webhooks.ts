@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isEqual } from 'lodash-es';
 import type { ENV_VARS } from '../env-vars';
 import {
   getWorkflow,
@@ -22,11 +23,33 @@ webhooks.post('/pipedream/:workflowId', async (c) => {
   const triggerPayload = await c.req.json();
   const pd = createPipedreamClient(c.env);
 
+  // Resolve the Pipedream event ID so we can correlate this execution run with
+  // the event shown in the "Recent Events" list (from deployedTriggers.listEvents).
+  // Pipedream's webhook POST does not include an event ID in headers or body —
+  // only the raw event payload — so we fetch the latest events and match by
+  // deep equality of the entire payload.
+  let triggerEventId: string | undefined;
+  if (workflow.deployedTriggerId) {
+    try {
+      const res = await pd.deployedTriggers.listEvents(workflow.deployedTriggerId, {
+        externalUserId: workflow.externalUserId,
+        n: 5,
+      });
+      const events = (res as { data?: Array<{ id?: string; e?: unknown }> }).data;
+      if (events) {
+        const match = events.find((ev) => isEqual(ev.e, triggerPayload));
+        triggerEventId = match?.id;
+      }
+    } catch (err) {
+      console.error('Failed to resolve trigger event ID:', err);
+    }
+  }
+
   // Execute in background — respond immediately
   c.executionCtx.waitUntil(
-    executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload)
-      .then((results) =>
-        console.log(`Workflow ${workflow.id} executed:`, JSON.stringify(results)),
+    executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload, 'pipedream', triggerEventId)
+      .then((run) =>
+        console.log(`Workflow ${workflow.id} run ${run.id} completed: ${run.status}`),
       )
       .catch((err) =>
         console.error(`Workflow ${workflow.id} execution failed:`, err),
@@ -62,14 +85,15 @@ webhooks.post('/custom/:customTriggerId', async (c) => {
       workflowIds.map(async (wfId) => {
         const workflow = await getWorkflow(c.env.WORKFLOWS, wfId);
         if (!workflow || workflow.status !== 'published') return;
-        return executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload);
+        return executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload, 'custom');
       }),
     )
-      .then(() =>
+      .then((runs) => {
+        const completed = runs.filter(Boolean);
         console.log(
-          `Custom trigger ${customTriggerId}: executed ${workflowIds.length} workflows`,
-        ),
-      )
+          `Custom trigger ${customTriggerId}: executed ${completed.length} workflows`,
+        );
+      })
       .catch((err) =>
         console.error(`Custom trigger ${customTriggerId} failed:`, err),
       ),

@@ -326,8 +326,12 @@ export class WorkflowService {
     return this.api.listDeployedTriggers();
   }
 
-  async triggerWorkflow(id: string): Promise<{ results: unknown[] }> {
+  async triggerWorkflow(id: string): Promise<{ run: unknown }> {
     return this.api.triggerWorkflow(id);
+  }
+
+  async listRuns(id: string, limit = 20): Promise<{ runs: unknown[] }> {
+    return this.api.listRuns(id, limit);
   }
 
   async unpublishWorkflow(id: string): Promise<Workflow> {

@@ -252,6 +252,66 @@
                 </div>
               }
 
+              <!-- Execution Runs — only for the trigger step when published -->
+              @if (selectedStep()?.type === 'trigger' && isPublished()) {
+                <div class="pd-trigger-events-section">
+                  <div class="pd-trigger-events-header">
+                    <span class="pd-trigger-events-title">Execution Runs</span>
+                    <button
+                      type="button"
+                      class="pd-btn pd-btn--ghost pd-btn--sm"
+                      [disabled]="loadingRuns()"
+                      (click)="loadExecutionRuns()"
+                    >
+                      @if (loadingRuns()) { Loading… } @else { Refresh }
+                    </button>
+                  </div>
+                  @if (executionRunsError()) {
+                    <small class="pd-test-status pd-test-status--error">{{ executionRunsError() }}</small>
+                  }
+                  @if (executionRuns(); as runs) {
+                    @if (runs.length === 0) {
+                      <p class="pd-trigger-events-empty">No execution runs yet.</p>
+                    } @else {
+                      <div class="pd-trigger-events-list">
+                        @for (run of runs; track $any(run).id) {
+                          <div class="pd-trigger-event-item">
+                            <button
+                              type="button"
+                              class="pd-trigger-event-summary"
+                              (click)="toggleRun($any(run).id)"
+                            >
+                              <span class="pd-run-status pd-run-status--{{ $any(run).status }}">{{ $any(run).status }}</span>
+                              <span class="pd-run-source">{{ $any(run).triggerSource }}</span>
+                              <span class="pd-trigger-event-ts">{{ $any(run).startedAt | date:'medium' }}</span>
+                              <span class="pd-trigger-event-chevron">{{ expandedRunId() === $any(run).id ? '▾' : '▸' }}</span>
+                            </button>
+                            @if (expandedRunId() === $any(run).id) {
+                              <div class="pd-run-detail">
+                                @if ($any(run).error) {
+                                  <div class="pd-run-error">{{ $any(run).error }}</div>
+                                }
+                                @for (step of $any(run).steps; track $index) {
+                                  <div class="pd-run-step pd-run-step--{{ step.status }}">
+                                    <span class="pd-run-step__key">{{ step.componentKey }}</span>
+                                    <span class="pd-run-step__status">{{ step.status }}</span>
+                                    @if (step.error) {
+                                      <span class="pd-run-step__error">{{ step.error }}</span>
+                                    }
+                                  </div>
+                                }
+                              </div>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  } @else {
+                    <p class="pd-trigger-events-empty">Click Refresh to load runs.</p>
+                  }
+                </div>
+              }
+
               <!-- Test step button — only for configured non-trigger Pipedream steps -->
               @if (canTestSelectedStep() && selectedStep()?.type !== 'trigger') {
                 <div class="pd-test-step-section">

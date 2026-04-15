@@ -1,12 +1,18 @@
 import type { PipedreamClient } from '@pipedream/sdk/server';
 import type { Workflow, PipedreamStep } from '../models/workflow.model';
 import type { ENV_VARS } from '../env-vars';
+import type {
+  ExecutionRun,
+  ExecutionStepResult,
+  ExecutionTriggerSource,
+} from '../models/execution-run.model';
 import {
   getWorkflow,
   saveWorkflow,
   indexCustomTrigger,
   removeCustomTriggerIndex,
 } from './workflow-store';
+import { createRunId, saveExecutionRun } from './execution-store';
 import { normalizeAppProps } from '../utils/normalize-props';
 
 // ── Interpolation ────────────────────────────────────────────────────────────
@@ -306,13 +312,30 @@ export async function executeWorkflow(
   kv: KVNamespace,
   workflow: Workflow,
   triggerPayload: unknown,
-): Promise<StepExecutionResult[]> {
+  triggerSource: ExecutionTriggerSource = 'pipedream',
+  triggerEventId?: string,
+): Promise<ExecutionRun> {
+  const now = new Date().toISOString();
+  const run: ExecutionRun = {
+    id: createRunId(),
+    workflowId: workflow.id,
+    externalUserId: workflow.externalUserId,
+    triggerSource,
+    triggerEventId,
+    triggerEvent: triggerPayload,
+    status: 'running',
+    steps: [],
+    startedAt: now,
+  };
+
+  // Persist initial running state
+  await saveExecutionRun(kv, run);
+
   // steps context is keyed by component slug (e.g. "google_calendar_list_events")
   // matching Pipedream's {{steps.X.Y}} interpolation convention.
   const stepsContext: Record<string, unknown> = {
     trigger: { event: triggerPayload },
   };
-  const results: StepExecutionResult[] = [];
 
   for (const step of workflow.steps.slice(1)) {
     if (!step.data || step.data.source !== 'pipedream') continue;
@@ -320,6 +343,8 @@ export async function executeWorkflow(
     const pdStep = step.data as PipedreamStep;
     const componentKey = pdStep.component.key;
     if (!componentKey) continue;
+
+    const stepStartedAt = new Date().toISOString();
 
     try {
       const resolvedProps = resolveInterpolations(
@@ -360,27 +385,41 @@ export async function executeWorkflow(
       };
       stepsContext[slugFromKey(componentKey)] = stepOutput;
 
-      results.push({
+      run.steps.push({
         stepId: step.id,
         componentKey,
+        startedAt: stepStartedAt,
+        completedAt: new Date().toISOString(),
         status: 'success',
         output: stepOutput,
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      results.push({
+
+      run.steps.push({
         stepId: step.id,
         componentKey,
+        startedAt: stepStartedAt,
+        completedAt: new Date().toISOString(),
         status: 'error',
         error: errorMsg,
       });
 
-      workflow.lastError = `Step ${componentKey} failed: ${errorMsg}`;
+      run.status = 'error';
+      run.error = `Step ${componentKey} failed: ${errorMsg}`;
+      run.completedAt = new Date().toISOString();
+      await saveExecutionRun(kv, run);
+
+      workflow.lastError = run.error;
       workflow.updatedAt = new Date().toISOString();
       await saveWorkflow(kv, workflow);
-      break; // Stop chain on failure
+      return run;
     }
   }
 
-  return results;
+  run.status = 'success';
+  run.completedAt = new Date().toISOString();
+  await saveExecutionRun(kv, run);
+
+  return run;
 }
