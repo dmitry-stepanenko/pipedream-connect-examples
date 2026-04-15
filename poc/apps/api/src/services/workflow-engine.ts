@@ -98,8 +98,9 @@ export async function publishWorkflow(
         pdStep.component.configurableProps,
       ),
       webhookUrl,
-      emitOnDeploy: false,
+      emitOnDeploy: true,
     });
+    console.log('deploy trigger response', JSON.stringify(response, null, 2));
 
     workflow.deployedTriggerId = (response as any).data?.id;
   } else if (trigger.data.source === 'custom') {
@@ -158,7 +159,139 @@ export async function unpublishWorkflow(
   return workflow;
 }
 
+// ── Schedule trigger synthetic event ─────────────────────────────────────────
+
+/**
+ * Builds a per-timezone section matching Pipedream's schedule trigger event shape.
+ * Replicates the structure of `timezone_configured` / `timezone_utc` from the
+ * Pipedream "Generate Test Event" internal call (observed via HAR).
+ */
+function buildTimezoneSection(now: Date, tz: string): Record<string, unknown> {
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
+  const year = parseInt(get('year'));
+  const month = parseInt(get('month'));
+  const day = parseInt(get('day'));
+  let hour = parseInt(get('hour'));
+  const minute = parseInt(get('minute'));
+  const second = parseInt(get('second'));
+  const millisecond = now.getMilliseconds();
+  if (hour === 24) hour = 0; // some Intl impls emit "24" for midnight
+
+  // Offset string: "GMT+05:30" → "+05:30", "GMT" → "+00:00"
+  const tzParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    timeZoneName: 'longOffset',
+  }).formatToParts(now);
+  const tzName = tzParts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
+  const offsetStr = tzName === 'GMT' ? '+00:00' : tzName.replace('GMT', '');
+
+  // ISO weekday (1=Mon … 7=Sun) and Monday anchor
+  const dayNameLong = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    weekday: 'long',
+  }).format(now);
+  const jsDay = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+    .indexOf(dayNameLong); // 0=Sun … 6=Sat
+  const isoDayOfWeek = jsDay === 0 ? 7 : jsDay; // 1=Mon … 7=Sun
+  const daysSinceMon = (jsDay + 6) % 7;
+  const mondayUtc = new Date(Date.UTC(year, month - 1, day - daysSinceMon));
+  const startOfWeek = mondayUtc.toISOString().slice(0, 10);
+
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const prettyDate = `${monthNames[month - 1]} ${day}, ${year}`;
+  const isPM = hour >= 12;
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  const prettyTime = `${hour12}:${pad(minute)}:${pad(second)} ${isPM ? 'PM' : 'AM'}`;
+  const time24h = `${pad(hour)}:${pad(minute)}:${pad(second)}`;
+  const dateIso = `${year}-${pad(month)}-${pad(day)}`;
+  const timeIso = `${pad(hour)}:${pad(minute)}:${pad(second)}${offsetStr}`;
+
+  return {
+    date: { day, month, year },
+    iso8601: { date: dateIso, time: timeIso, timestamp: `${dateIso}T${timeIso}` },
+    metadata: { day_name: dayNameLong, day_of_week: isoDayOfWeek, start_of_week: startOfWeek },
+    pretty: { date: prettyDate, time: prettyTime, time_24h: time24h },
+    time: { hour, millisecond, minute, second },
+    timezone: tz,
+  };
+}
+
+/**
+ * Generates a synthetic schedule trigger event that exactly matches the shape
+ * Pipedream produces via its internal `timerInterfaceEmit` mutation.
+ */
+export function buildScheduleSampleEvent(
+  configuredProps: Record<string, unknown>,
+): Record<string, unknown> {
+  const cron = (configuredProps.cron as string | undefined) ?? '0 * * * *';
+  const timezone = (configuredProps.timezone as string | undefined) ?? 'UTC';
+  const now = new Date();
+  return {
+    cron,
+    timestamp: Math.floor(now.getTime() / 1000),
+    timezone_configured: buildTimezoneSection(now, timezone),
+    timezone_utc: buildTimezoneSection(now, 'UTC'),
+  };
+}
+
 // ── Execution ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetches the most recently emitted event from a deployed trigger.
+ * Returns the event payload (the `e` field) or null if the trigger has no events yet.
+ */
+async function fetchLastTriggerEvent(
+  pd: PipedreamClient,
+  deployedTriggerId: string,
+  externalUserId: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await pd.deployedTriggers.listEvents(deployedTriggerId, {
+    externalUserId,
+    n: 1,
+  });
+  const events = (response as { data?: Array<{ e?: Record<string, unknown> }> }).data;
+  return events?.[0]?.e ?? null;
+}
+
+/**
+ * Returns the best available test event for the workflow's trigger:
+ * - Schedule triggers (`schedule-*`): builds a synthetic event from the cron config.
+ * - All other triggers: fetches the last real event from the deployed trigger.
+ *
+ * Mirrors Pipedream's "Generate Test Event" button behaviour.
+ */
+export async function getTestTriggerEvent(
+  pd: PipedreamClient,
+  workflow: Workflow,
+  externalUserId: string,
+): Promise<Record<string, unknown> | null> {
+  const trigger = workflow.steps[0];
+  if (trigger?.data?.source === 'pipedream') {
+    const pdStep = trigger.data as PipedreamStep;
+    if (pdStep.app.nameSlug === 'schedule') {
+      return buildScheduleSampleEvent(
+        (pdStep.configuredProps ?? {}) as Record<string, unknown>,
+      );
+    }
+  }
+  if (workflow.deployedTriggerId) {
+    return fetchLastTriggerEvent(pd, workflow.deployedTriggerId, externalUserId);
+  }
+  return null;
+}
 
 export interface StepExecutionResult {
   stepId: string;

@@ -102,6 +102,35 @@
       <button type="button" class="pd-add-step-btn" (click)="addStep()">
         + Add Step
       </button>
+
+      @if (isPublished()) {
+        <div class="pd-deployed-triggers-section">
+          <button
+            type="button"
+            class="pd-btn pd-btn--ghost pd-btn--sm"
+            [disabled]="loadingTriggers()"
+            (click)="loadDeployedTriggers()"
+          >
+            @if (loadingTriggers()) { Loading… } @else { 🔍 Inspect Deployed Triggers }
+          </button>
+          @if (deployedTriggers(); as triggers) {
+            <div class="pd-deployed-triggers-list">
+              @if (triggers.length === 0) {
+                <p class="pd-deployed-triggers-empty">No deployed triggers found.</p>
+              }
+              @for (t of triggers; track $any(t).id) {
+                <div class="pd-deployed-trigger-item">
+                  <code class="pd-deployed-trigger-id">{{ $any(t).id }}</code>
+                  <span class="pd-deployed-trigger-name">{{ $any(t).name ?? $any(t).key }}</span>
+                  <span class="pd-deployed-trigger-status pd-deployed-trigger-status--{{ $any(t).active ? 'active' : 'inactive' }}">
+                    {{ $any(t).active ? 'active' : 'inactive' }}
+                  </span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
     </div>
 
     <!-- Right: tabbed panel (Step Details / AI Chat) -->
@@ -154,8 +183,31 @@
                 />
               }
 
-              <!-- Test step button — only for configured Pipedream steps -->
-              @if (canTestSelectedStep()) {
+              <!-- Generate Test Event — only for the trigger step when published -->
+              @if (selectedStep()?.type === 'trigger' && isPublished()) {
+                <div class="pd-test-step-section">
+                  <button
+                    type="button"
+                    class="pd-btn pd-btn--secondary"
+                    [disabled]="emittingTestEvent()"
+                    (click)="emitTestEvent()"
+                  >
+                    @if (emittingTestEvent()) { Generating… } @else { ⚡ Generate Test Event }
+                  </button>
+                  @if (testEventError()) {
+                    <small class="pd-test-status pd-test-status--error">{{ testEventError() }}</small>
+                  }
+                  @if (testEventJson(); as json) {
+                    <pre class="pd-test-event-json">{{ json }}</pre>
+                  }
+                  <small class="pd-trigger-id">
+                    Deployed trigger: <code>{{ workflow.deployedTriggerId }}</code>
+                  </small>
+                </div>
+              }
+
+              <!-- Test step button — only for configured non-trigger Pipedream steps -->
+              @if (canTestSelectedStep() && selectedStep()?.type !== 'trigger') {
                 <div class="pd-test-step-section">
                   <button
                     type="button"

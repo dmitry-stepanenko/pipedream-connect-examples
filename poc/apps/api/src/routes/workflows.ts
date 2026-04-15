@@ -11,6 +11,7 @@ import {
   publishWorkflow,
   unpublishWorkflow,
   executeWorkflow,
+  getTestTriggerEvent,
 } from '../services/workflow-engine';
 import { createPipedreamClient } from '../utils/pipedream';
 
@@ -136,9 +137,9 @@ workflows.post('/:id/publish', async (c) => {
   }
 });
 
-// Test-trigger workflow (runs all action steps with an optional trigger payload)
+// Test-trigger workflow — uses the last real event emitted by the deployed trigger
 workflows.post('/:id/trigger', async (c) => {
-  const { externalUserId, triggerPayload = {} } = await c.req.json();
+  const { externalUserId } = await c.req.json();
   if (!externalUserId) {
     return c.json({ error: 'externalUserId required' }, 400);
   }
@@ -150,12 +151,14 @@ workflows.post('/:id/trigger', async (c) => {
 
   try {
     const pd = createPipedreamClient(c.env);
-    const results = await executeWorkflow(
-      pd,
-      c.env.WORKFLOWS,
-      workflow,
-      triggerPayload,
-    );
+
+    // Resolve the trigger payload — synthetic for schedule triggers, otherwise
+    // the last real event from the deployed trigger.
+    const triggerPayload =
+      (await getTestTriggerEvent(pd, workflow, externalUserId)) ?? {};
+    console.log(JSON.stringify({ triggerPayload }, null, 2));
+
+    const results = await executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload);
     return c.json({ results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -179,6 +182,49 @@ workflows.post('/:id/unpublish', async (c) => {
       externalUserId,
     );
     return c.json({ workflow });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// Generate a test event for the workflow's deployed trigger (mirrors Pipedream's
+// "Generate Test Event" button) and return the emitted payload.
+workflows.post('/:id/emit-test-event', async (c) => {
+  const { externalUserId } = await c.req.json();
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+  if (workflow.status !== 'published') {
+    return c.json({ error: 'Workflow must be published before generating a test event' }, 400);
+  }
+
+  try {
+    const pd = createPipedreamClient(c.env);
+    const event = await getTestTriggerEvent(pd, workflow, externalUserId);
+    return c.json({ event });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// List all deployed triggers for a user (useful for debugging)
+workflows.get('/deployed-triggers', async (c) => {
+  const externalUserId = c.req.query('externalUserId');
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  try {
+    const pd = createPipedreamClient(c.env);
+    const response = await pd.deployedTriggers.list({ externalUserId });
+    return c.json({ triggers: (response as { data?: unknown[] }).data ?? [] });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 400);

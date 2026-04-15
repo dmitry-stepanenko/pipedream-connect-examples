@@ -1,11 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { PIPEDREAM_CONFIG } from '../tokens/pipedream-config.token';
-import type {
-  Workflow,
-  WorkflowStep,
-  WorkflowStepData,
-  StepOutputSchema,
-} from '../models/workflow.model';
+import type { Workflow } from '../models/workflow.model';
 
 @Injectable({ providedIn: 'root' })
 export class WorkflowApiService {
@@ -84,6 +79,27 @@ export class WorkflowApiService {
     }
     const data = await res.json();
     return data.workflow;
+  }
+
+  async emitTestEvent(id: string): Promise<{ event: unknown }> {
+    const res = await fetch(`${this.baseUrl}/${id}/emit-test-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ externalUserId: this.userId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error || `Failed to emit test event: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async listDeployedTriggers(): Promise<{ triggers: unknown[] }> {
+    const res = await fetch(
+      `${this.baseUrl}/deployed-triggers?externalUserId=${encodeURIComponent(this.userId)}`,
+    );
+    if (!res.ok) throw new Error(`Failed to list deployed triggers: ${res.status}`);
+    return res.json();
   }
 
   async triggerWorkflow(id: string): Promise<{ results: unknown[] }> {

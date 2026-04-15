@@ -314,6 +314,14 @@ export class WorkflowService {
     return workflow;
   }
 
+  async emitTestEvent(id: string): Promise<{ event: unknown }> {
+    return this.api.emitTestEvent(id);
+  }
+
+  async listDeployedTriggers(): Promise<{ triggers: unknown[] }> {
+    return this.api.listDeployedTriggers();
+  }
+
   async triggerWorkflow(id: string): Promise<{ results: unknown[] }> {
     return this.api.triggerWorkflow(id);
   }

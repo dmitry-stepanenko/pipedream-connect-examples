@@ -6,7 +6,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import type { ConfiguredProps } from '@pipedream/sdk';
 import { WorkflowService } from '../../services/workflow.service';
-import type { WorkflowStep, WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
+import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
 import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
 import { WorkflowStepComponent } from '../workflow-step/workflow-step';
 import { StepPickerComponent } from '../step-picker/step-picker';
@@ -41,11 +41,18 @@ export class WorkflowBuilderComponent {
   protected readonly triggerError = signal<string | null>(null);
   protected readonly triggerResults = signal<unknown[] | null>(null);
 
+  protected readonly emittingTestEvent = signal(false);
+  protected readonly testEventError = signal<string | null>(null);
+  protected readonly testEventJson = signal<string | null>(null);
+
+  protected readonly loadingTriggers = signal(false);
+  protected readonly deployedTriggers = signal<unknown[] | null>(null);
+
   protected get workflow() {
     return this.workflowService.activeWorkflow();
   }
 
-  protected readonly selectedStep = computed((): WorkflowStep | null => {
+  protected readonly selectedStep = computed(() => {
     const id = this.selectedStepId();
     if (!id) return null;
     return this.workflowService.activeSteps().find((s) => s.id === id) ?? null;
@@ -101,7 +108,7 @@ export class WorkflowBuilderComponent {
     this.workflowService.removeStep(w.id, stepId);
   }
 
-  protected onDrop(event: CdkDragDrop<WorkflowStep[]>) {
+  protected onDrop(event: CdkDragDrop<any[]>) {
     const w = this.workflow;
     if (!w) return;
     if (event.currentIndex === 0 && event.previousIndex !== 0) return;
@@ -191,6 +198,33 @@ export class WorkflowBuilderComponent {
       this.triggerError.set(err instanceof Error ? err.message : String(err));
     } finally {
       this.triggering.set(false);
+    }
+  }
+
+  protected async emitTestEvent() {
+    const w = this.workflow;
+    if (!w) return;
+    this.emittingTestEvent.set(true);
+    this.testEventError.set(null);
+    this.testEventJson.set(null);
+    try {
+      const res = await this.workflowService.emitTestEvent(w.id);
+      this.testEventJson.set(JSON.stringify(res.event, null, 2));
+    } catch (err) {
+      this.testEventError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.emittingTestEvent.set(false);
+    }
+  }
+
+  protected async loadDeployedTriggers() {
+    this.loadingTriggers.set(true);
+    this.deployedTriggers.set(null);
+    try {
+      const res = await this.workflowService.listDeployedTriggers();
+      this.deployedTriggers.set(res.triggers);
+    } finally {
+      this.loadingTriggers.set(false);
     }
   }
 
