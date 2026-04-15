@@ -1,5 +1,5 @@
 import {
-  Component, input, output, signal, effect, inject,
+  Component, input, output, signal, effect, inject, computed,
 } from '@angular/core';
 import {
   Component as PdComponent,
@@ -48,6 +48,18 @@ export class ComponentFormComponent {
   protected readonly reloading = signal(false);
   protected readonly submitting = signal(false);
   protected readonly dynamicPropsId = signal<string | undefined>(undefined);
+  /** Set of optional prop names the user has explicitly toggled on */
+  protected readonly enabledOptional = signal<Set<string>>(new Set());
+
+  /** Optional props not yet enabled and without a value — shown as toggle chips */
+  protected readonly hiddenOptionalProps = computed(() => {
+    const cp = this.configuredProps() as Record<string, unknown>;
+    const enabled = this.enabledOptional();
+    return this.props().filter(p =>
+      !p.hidden && p.optional && !enabled.has(p.name)
+      && (cp[p.name] === undefined || cp[p.name] === null),
+    );
+  });
 
   private readonly client = inject(PipedreamClientService);
 
@@ -63,6 +75,30 @@ export class ComponentFormComponent {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected propValue(prop: ConfigurableProp): any {
     return (this.configuredProps() as Record<string, unknown>)[prop.name];
+  }
+
+  protected isPropVisible(prop: ConfigurableProp): boolean {
+    if (prop.hidden) return false;
+    if (!prop.optional) return true;
+    if (this.enabledOptional().has(prop.name)) return true;
+    const v = this.propValue(prop);
+    return v !== undefined && v !== null;
+  }
+
+  protected enableOptionalProp(propName: string) {
+    const next = new Set(this.enabledOptional());
+    next.add(propName);
+    this.enabledOptional.set(next);
+  }
+
+  protected disableOptionalProp(prop: ConfigurableProp) {
+    const next = new Set(this.enabledOptional());
+    next.delete(prop.name);
+    this.enabledOptional.set(next);
+    // Clear the value when hiding
+    const updated: ConfiguredProps = { ...this.configuredProps() };
+    delete (updated as Record<string, unknown>)[prop.name];
+    this.configure.emit(updated);
   }
 
   protected async onFieldChange(prop: ConfigurableProp, value: unknown) {
@@ -106,6 +142,7 @@ export class ComponentFormComponent {
       const result = await this.client.reloadProps(
         this.component().key,
         currentConfiguredProps as Record<string, unknown>,
+        allProps,
         this.dynamicPropsId(),
       );
 

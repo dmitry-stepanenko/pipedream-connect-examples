@@ -4,7 +4,7 @@
   }
 
   @for (prop of props(); track prop.name) {
-    @if (!prop.hidden) {
+    @if (isPropVisible(prop)) {
       <!-- Props with options (static or remote) render as select -->
       @if (hasOptions(prop)) {
         <pd-select-field
@@ -13,6 +13,8 @@
           [configuredProps]="configuredProps()"
           [componentId]="component().key"
           [dynamicPropsId]="dynamicPropsId()"
+          [propIndex]="$index"
+          [allProps]="props()"
           (valueChange)="onFieldChange(prop, $event)"
         />
       } @else {
@@ -106,7 +108,35 @@
           }
         }
       }
+
+      <!-- X button to remove an optional field that's been enabled -->
+      @if (prop.optional && enabledOptional().has(prop.name)) {
+        <div class="pd-optional-remove">
+          <button
+            type="button"
+            class="pd-optional-remove-btn"
+            title="Remove optional field"
+            (click)="disableOptionalProp(prop)"
+          >✕ Remove</button>
+        </div>
+      }
     }
+  }
+
+  <!-- Chips to add hidden optional fields -->
+  @if (hiddenOptionalProps().length > 0) {
+    <div class="pd-optional-chips">
+      @for (prop of hiddenOptionalProps(); track prop.name) {
+        <button
+          type="button"
+          class="pd-optional-chip"
+          (click)="enableOptionalProp(prop.name)"
+        >
+          <span class="pd-optional-chip-icon">+</span>
+          <span>{{ prop.label ?? prop.name }}</span>
+        </button>
+      }
+    </div>
   }
 
   <button type="submit" class="pd-submit-btn" [disabled]="submitting() || reloading()">

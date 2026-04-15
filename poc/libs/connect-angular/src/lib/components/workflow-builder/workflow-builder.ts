@@ -37,6 +37,9 @@ export class WorkflowBuilderComponent {
   protected readonly testError = signal<string | null>(null);
   protected readonly publishing = signal(false);
   protected readonly publishError = signal<string | null>(null);
+  protected readonly triggering = signal(false);
+  protected readonly triggerError = signal<string | null>(null);
+  protected readonly triggerResults = signal<unknown[] | null>(null);
 
   protected get workflow() {
     return this.workflowService.activeWorkflow();
@@ -172,6 +175,22 @@ export class WorkflowBuilderComponent {
       );
     } finally {
       this.publishing.set(false);
+    }
+  }
+
+  protected async triggerWorkflow() {
+    const w = this.workflow;
+    if (!w) return;
+    this.triggering.set(true);
+    this.triggerError.set(null);
+    this.triggerResults.set(null);
+    try {
+      const res = await this.workflowService.triggerWorkflow(w.id);
+      this.triggerResults.set(res.results);
+    } catch (err) {
+      this.triggerError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.triggering.set(false);
     }
   }
 

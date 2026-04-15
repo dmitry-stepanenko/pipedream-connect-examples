@@ -17,6 +17,57 @@
   color: #666;
 }
 
+.pd-optional-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.pd-optional-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.pd-optional-chip:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.pd-optional-chip-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+  color: #6b7280;
+}
+
+.pd-optional-remove {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.25rem;
+}
+
+.pd-optional-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  padding: 0.1rem 0.25rem;
+}
+
+.pd-optional-remove-btn:hover {
+  color: #ef4444;
+}
+
 .pd-submit-btn {
   align-self: flex-start;
   margin-top: 1rem;

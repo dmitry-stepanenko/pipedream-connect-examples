@@ -1,4 +1,4 @@
-import { Component, input, output, signal, effect, inject, untracked } from '@angular/core';
+import { Component, input, output, signal, effect, inject, untracked, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfigurableProp, ConfiguredProps, PropOption } from '@pipedream/sdk';
 import { PipedreamClientService } from '../../../services/pipedream-client.service';
@@ -55,20 +55,45 @@ export class SelectFieldComponent {
   componentId = input<string>('');
   /** Dynamic props ID — used for remote options when dynamic props are active */
   dynamicPropsId = input<string | undefined>(undefined);
+  /** Index of this prop in the configurableProps array */
+  propIndex = input(0);
+  /** Full list of configurable props — used to compute upstream dependencies */
+  allProps = input<ConfigurableProp[]>([]);
 
   protected readonly resolvedOptions = signal<SelectOption[]>([]);
   protected readonly loading = signal(false);
 
   private readonly client = inject(PipedreamClientService);
 
+  /**
+   * Serialized key of configured props BEFORE this prop in the form.
+   * Returns a stable string so the effect only re-fires when upstream values
+   * actually change (not on every downstream keystroke).
+   */
+  private readonly upstreamConfigKey = computed(() => {
+    const idx = this.propIndex();
+    const all = this.allProps();
+    const cp = this.configuredProps() as Record<string, unknown>;
+    const upstream: Record<string, unknown> = {};
+    for (let i = 0; i < idx; i++) {
+      upstream[all[i].name] = cp[all[i].name];
+    }
+    return JSON.stringify(upstream);
+  });
+
   constructor() {
     effect(() => {
       const prop = this.prop();
-      // Read context with untracked so changes to these don't re-trigger the effect
-      const configuredProps = untracked(() => this.configuredProps());
+      // Track upstream configured props — when they change, remote options reload
+      // (e.g. connecting a Slack account triggers channel list to load).
+      // The serialized key ensures we only re-fire when upstream *values* change,
+      // not on every configuredProps reference change from downstream edits.
+      const upstreamKey = this.upstreamConfigKey();
+
       const componentId = untracked(() => this.componentId());
       const dynamicPropsId = untracked(() => this.dynamicPropsId());
-      this.loadOptions(prop, configuredProps, componentId, dynamicPropsId);
+      const upstreamProps = JSON.parse(upstreamKey || '{}') as ConfiguredProps;
+      this.loadOptions(prop, upstreamProps, componentId, dynamicPropsId);
     });
   }
 
@@ -88,6 +113,7 @@ export class SelectFieldComponent {
           componentId,
           prop.name,
           configuredProps as Record<string, unknown>,
+          untracked(() => this.allProps()),
           dynamicPropsId,
         );
         const opts: SelectOption[] = [];
@@ -104,7 +130,8 @@ export class SelectFieldComponent {
           }
         }
         this.resolvedOptions.set(opts);
-      } catch {
+      } catch (e) {
+        console.error(`Failed to load remote options for prop "${prop.name}"`, e);
         this.resolvedOptions.set([]);
       } finally {
         this.loading.set(false);

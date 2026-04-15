@@ -91,12 +91,13 @@ export class PipedreamClientService implements OnDestroy {
   reloadProps(
     componentKey: string,
     configuredProps: Record<string, unknown>,
+    configurableProps: ConfigurableProp[],
     dynamicPropsId?: string,
   ) {
     return this.client.components.reloadProps({
       id: componentKey,
       externalUserId: this.config.externalUserId,
-      configuredProps,
+      configuredProps: this.normalizeAppProps(configuredProps, configurableProps),
       ...(dynamicPropsId ? { dynamicPropsId } : {}),
     });
   }
@@ -109,6 +110,7 @@ export class PipedreamClientService implements OnDestroy {
     componentKey: string,
     propName: string,
     configuredProps: Record<string, unknown>,
+    configurableProps: ConfigurableProp[],
     dynamicPropsId?: string,
     query?: string,
   ) {
@@ -116,7 +118,7 @@ export class PipedreamClientService implements OnDestroy {
       id: componentKey,
       externalUserId: this.config.externalUserId,
       propName,
-      configuredProps,
+      configuredProps: this.normalizeAppProps(configuredProps, configurableProps),
       ...(dynamicPropsId ? { dynamicPropsId } : {}),
       ...(query ? { query } : {}),
     });
@@ -125,8 +127,8 @@ export class PipedreamClientService implements OnDestroy {
   /**
    * @deprecated Use reloadProps() instead.
    */
-  configureProps(componentKey: string, configuredProps: Record<string, unknown>) {
-    return this.reloadProps(componentKey, configuredProps);
+  configureProps(componentKey: string, configuredProps: Record<string, unknown>, configurableProps: ConfigurableProp[]) {
+    return this.reloadProps(componentKey, configuredProps, configurableProps);
   }
 
   // ── Action execution (testing) ────────────────────────────────────────────

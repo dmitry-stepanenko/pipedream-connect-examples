@@ -314,6 +314,10 @@ export class WorkflowService {
     return workflow;
   }
 
+  async triggerWorkflow(id: string): Promise<{ results: unknown[] }> {
+    return this.api.triggerWorkflow(id);
+  }
+
   async unpublishWorkflow(id: string): Promise<Workflow> {
     const workflow = await this.api.unpublishWorkflow(id);
     this._workflows.update((list) =>

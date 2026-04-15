@@ -86,6 +86,19 @@ export class WorkflowApiService {
     return data.workflow;
   }
 
+  async triggerWorkflow(id: string): Promise<{ results: unknown[] }> {
+    const res = await fetch(`${this.baseUrl}/${id}/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ externalUserId: this.userId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error || `Failed to trigger: ${res.status}`);
+    }
+    return res.json();
+  }
+
   async unpublishWorkflow(id: string): Promise<Workflow> {
     const res = await fetch(`${this.baseUrl}/${id}/unpublish`, {
       method: 'POST',

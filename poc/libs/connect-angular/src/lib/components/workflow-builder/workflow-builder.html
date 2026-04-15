@@ -31,6 +31,14 @@
           @if (isPublished()) {
             <button
               type="button"
+              class="pd-btn pd-btn--secondary"
+              [disabled]="triggering()"
+              (click)="triggerWorkflow()"
+            >
+              @if (triggering()) { Running... } @else { ▶ Test Run }
+            </button>
+            <button
+              type="button"
               class="pd-btn pd-btn--ghost"
               [disabled]="publishing()"
               (click)="unpublish()"
@@ -51,6 +59,22 @@
       </div>
       @if (publishError()) {
         <div class="pd-publish-error">{{ publishError() }}</div>
+      }
+      @if (triggerError()) {
+        <div class="pd-publish-error">{{ triggerError() }}</div>
+      }
+      @if (triggerResults(); as results) {
+        <div class="pd-trigger-results">
+          @for (r of results; track $index) {
+            <div class="pd-trigger-result pd-trigger-result--{{ $any(r).status }}">
+              <span class="pd-trigger-result__key">{{ $any(r).componentKey }}</span>
+              <span class="pd-trigger-result__status">{{ $any(r).status }}</span>
+              @if ($any(r).error) {
+                <span class="pd-trigger-result__error">{{ $any(r).error }}</span>
+              }
+            </div>
+          }
+        </div>
       }
 
       <div

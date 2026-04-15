@@ -10,6 +10,7 @@ import {
 import {
   publishWorkflow,
   unpublishWorkflow,
+  executeWorkflow,
 } from '../services/workflow-engine';
 import { createPipedreamClient } from '../utils/pipedream';
 
@@ -129,6 +130,28 @@ workflows.post('/:id/publish', async (c) => {
       externalUserId,
     );
     return c.json({ workflow });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// Test-trigger workflow (runs all action steps with an empty trigger payload)
+workflows.post('/:id/trigger', async (c) => {
+  const { externalUserId } = await c.req.json();
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  try {
+    const pd = createPipedreamClient(c.env);
+    const results = await executeWorkflow(pd, c.env.WORKFLOWS, workflow, {});
+    return c.json({ results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 400);
