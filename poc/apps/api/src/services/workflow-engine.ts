@@ -194,30 +194,32 @@ export async function executeWorkflow(
         { steps: stepsContext },
       ) as Record<string, unknown>;
 
+      const configuredProps = normalizeAppProps(
+        resolvedProps,
+        pdStep.component.configurableProps,
+      );
+
       const payload = {
         id: componentKey,
         externalUserId: workflow.externalUserId,
-        configuredProps: normalizeAppProps(
-          resolvedProps,
-          pdStep.component.configurableProps,
-        ),
-      };
-      console.log(JSON.stringify({ componentKey, payload }, null, 2));
-
-      const result = await pd.actions.run({
-        id: componentKey,
-        externalUserId: workflow.externalUserId,
-        configuredProps: normalizeAppProps(
-          resolvedProps,
-          pdStep.component.configurableProps,
-        ),
-      });
-      console.log(JSON.stringify({ componentKey, result }, null, 2));
+        configuredProps,
+      }
+      console.log((JSON.stringify({componentKey, payload}, null, 2)));
+      const result = await pd.actions.run(payload);
+      console.log((JSON.stringify({componentKey, result}, null, 2)));
 
       const typedResult = result as {
         ret?: unknown;
         exports?: Record<string, unknown>;
+        os?: Array<{ k: string; err?: { message?: string } }>;
       };
+
+      // pd.actions.run does not throw on step-level errors — they arrive as
+      // observations with k === 'error' in the os array.
+      const errorObs = typedResult.os?.find((o) => o.k === 'error');
+      if (errorObs) {
+        throw new Error(errorObs.err?.message ?? 'Step returned an error');
+      }
       // Use $return_value to match Pipedream's {{steps.X.$return_value}} convention
       const stepOutput: Record<string, unknown> = {
         $return_value: typedResult.ret,

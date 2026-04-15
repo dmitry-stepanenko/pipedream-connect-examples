@@ -360,7 +360,7 @@ describe('executeWorkflow', () => {
     });
   });
 
-  it('stops execution and records error when a step fails', async () => {
+  it('stops execution and records error when a step throws', async () => {
     mockActionsRun.mockRejectedValueOnce(new Error('API quota exceeded'));
 
     const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
@@ -371,8 +371,67 @@ describe('executeWorkflow', () => {
       status: 'error',
       error: 'API quota exceeded',
     });
-    // Slack step should not have been called
     expect(mockActionsRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops execution when a step returns an error observation', async () => {
+    // Mirrors the real Pipedream behaviour: pd.actions.run resolves (no throw)
+    // but places the error in result.os with k === 'error'.
+    mockActionsRun.mockResolvedValueOnce({
+      os: [{ k: 'error', err: { message: 'Bad Request' } }],
+      exports: {},
+    });
+
+    const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      stepId: calendarStep.id,
+      status: 'error',
+      error: 'Bad Request',
+    });
+    // Slack must NOT run after the calendar step errors
+    expect(mockActionsRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the error observation message even when err.message is missing', async () => {
+    mockActionsRun.mockResolvedValueOnce({
+      os: [{ k: 'error' }],
+      exports: {},
+    });
+
+    const results = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+
+    expect(results[0].status).toBe('error');
+    expect(results[0].error).toBe('Step returned an error');
+  });
+
+  it('resolves trigger interpolations when a triggerPayload is provided', async () => {
+    // Simulates a caller passing explicit trigger data (e.g. from the test-trigger
+    // endpoint) so that {{steps.trigger.event.*}} references are resolved.
+    mockActionsRun
+      .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
+      .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
+
+    await executeWorkflow(mockPd, mockKv, workflow, {
+      timezone_configured: { iso8601: { date: '2026-04-14' } },
+    });
+
+    const calendarCall = mockActionsRun.mock.calls[0][0];
+    expect(calendarCall.configuredProps.timeMin).toBe('2026-04-14T00:00:00Z');
+    expect(calendarCall.configuredProps.timeMax).toBe('2026-04-14T23:59:59Z');
+  });
+
+  it('leaves trigger expressions unresolved when triggerPayload is empty', async () => {
+    mockActionsRun.mockResolvedValueOnce({ ret: [], exports: {} });
+
+    await executeWorkflow(mockPd, mockKv, workflow, {});
+
+    const calendarCall = mockActionsRun.mock.calls[0][0];
+    // Template strings should pass through unchanged rather than become undefined
+    expect(calendarCall.configuredProps.timeMin).toBe(
+      '{{steps.trigger.event.timezone_configured.iso8601.date}}T00:00:00Z',
+    );
   });
 
   it('leaves unresolvable expressions unchanged', async () => {

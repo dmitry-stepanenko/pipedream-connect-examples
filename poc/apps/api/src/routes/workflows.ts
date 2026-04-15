@@ -136,9 +136,9 @@ workflows.post('/:id/publish', async (c) => {
   }
 });
 
-// Test-trigger workflow (runs all action steps with an empty trigger payload)
+// Test-trigger workflow (runs all action steps with an optional trigger payload)
 workflows.post('/:id/trigger', async (c) => {
-  const { externalUserId } = await c.req.json();
+  const { externalUserId, triggerPayload = {} } = await c.req.json();
   if (!externalUserId) {
     return c.json({ error: 'externalUserId required' }, 400);
   }
@@ -150,7 +150,12 @@ workflows.post('/:id/trigger', async (c) => {
 
   try {
     const pd = createPipedreamClient(c.env);
-    const results = await executeWorkflow(pd, c.env.WORKFLOWS, workflow, {});
+    const results = await executeWorkflow(
+      pd,
+      c.env.WORKFLOWS,
+      workflow,
+      triggerPayload,
+    );
     return c.json({ results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
