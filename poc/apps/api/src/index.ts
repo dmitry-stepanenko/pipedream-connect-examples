@@ -36,7 +36,16 @@ app.get('/api', (c) => {
   return c.json({ message: 'API is running' });
 });
 
-// Mint a Pipedream connect token for a given external user
+// Mint a Pipedream connect token for a given external user.
+//
+// TODO SECURITY: This endpoint currently accepts externalUserId from the request
+// body with no caller authentication. Anyone who can reach this URL can obtain
+// a Pipedream token scoped to any user ID they supply, giving them full access
+// to that user's connected accounts.
+//
+// Before production: read externalUserId from the server-side session instead,
+// so the caller cannot influence which user they get a token for. Example:
+//   const externalUserId = c.get('session').userId; // from your own auth layer
 app.post('/api/pipedream/token', async (c) => {
   const { externalUserId } = await c.req.json();
 
