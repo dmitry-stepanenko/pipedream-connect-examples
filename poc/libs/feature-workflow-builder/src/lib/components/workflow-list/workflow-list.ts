@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, output } from '@angular/core';
-import { WorkflowService } from '../../services/workflow.service';
+import { WorkflowService } from '@poc/data-access-api';
 
 @Component({
   selector: 'pd-workflow-list',

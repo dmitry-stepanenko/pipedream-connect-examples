@@ -6,8 +6,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { DatePipe, JsonPipe } from '@angular/common';
 import type { ConfiguredProps } from '@pipedream/sdk';
-import { WorkflowService } from '../../services/workflow.service';
-import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
+import { WorkflowService } from '@poc/data-access-api';
+import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '@poc/data-access-api';
 import { CUSTOM_TRIGGERS, ComponentFormComponent } from '@poc/connect-angular';
 import { WorkflowStepComponent } from '../workflow-step/workflow-step';
 import { StepPickerComponent } from '../step-picker/step-picker';

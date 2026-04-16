@@ -1,4 +1,4 @@
-import { inject, Injectable, OnDestroy } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import {
   createFrontendClient,
   ConnectResult,
@@ -9,8 +9,28 @@ import type { CreateTokenResponse } from '@pipedream/sdk';
 import type { ConfigurableProp } from '@pipedream/sdk';
 import { PIPEDREAM_CONFIG } from '../tokens/pipedream-config.token';
 
+/**
+ * Angular wrapper around the Pipedream browser SDK.
+ *
+ * Scope: mirrors what `@pipedream/connect-react` provides — SDK initialization,
+ * token acquisition, and read/query operations (apps, components, accounts,
+ * props). It is intentionally free of application business logic.
+ *
+ * What belongs here:
+ *   - SDK lifecycle (createFrontendClient, token callback)
+ *   - Read/list operations: listApps, getApp, listComponents, getComponent,
+ *     listAccounts
+ *   - UI-initiating actions: connectAccount (opens the OAuth popup)
+ *   - Prop utilities: reloadProps, configureProp, runAction
+ *
+ * What does NOT belong here:
+ *   - Application-specific write operations (deleting accounts, saving
+ *     workflows, etc.). Those belong in the feature library that owns that
+ *     domain, calling your own backend API directly.
+ *   - Any logic tied to a particular app's business rules.
+ */
 @Injectable({ providedIn: 'root' })
-export class PipedreamClientService implements OnDestroy {
+export class PipedreamClientService {
   private readonly config = inject(PIPEDREAM_CONFIG);
   private client: PipedreamClient;
 
@@ -97,7 +117,10 @@ export class PipedreamClientService implements OnDestroy {
     return this.client.components.reloadProps({
       id: componentKey,
       externalUserId: this.config.externalUserId,
-      configuredProps: this.normalizeAppProps(configuredProps, configurableProps),
+      configuredProps: this.normalizeAppProps(
+        configuredProps,
+        configurableProps,
+      ),
       ...(dynamicPropsId ? { dynamicPropsId } : {}),
     });
   }
@@ -118,7 +141,10 @@ export class PipedreamClientService implements OnDestroy {
       id: componentKey,
       externalUserId: this.config.externalUserId,
       propName,
-      configuredProps: this.normalizeAppProps(configuredProps, configurableProps),
+      configuredProps: this.normalizeAppProps(
+        configuredProps,
+        configurableProps,
+      ),
       ...(dynamicPropsId ? { dynamicPropsId } : {}),
       ...(query ? { query } : {}),
     });
@@ -127,7 +153,11 @@ export class PipedreamClientService implements OnDestroy {
   /**
    * @deprecated Use reloadProps() instead.
    */
-  configureProps(componentKey: string, configuredProps: Record<string, unknown>, configurableProps: ConfigurableProp[]) {
+  configureProps(
+    componentKey: string,
+    configuredProps: Record<string, unknown>,
+    configurableProps: ConfigurableProp[],
+  ) {
     return this.reloadProps(componentKey, configuredProps, configurableProps);
   }
 
@@ -143,7 +173,7 @@ export class PipedreamClientService implements OnDestroy {
     configuredProps: Record<string, unknown>,
     configurableProps: ConfigurableProp[],
   ) {
-    const props = this.normalizeAppProps(configuredProps, configurableProps)
+    const props = this.normalizeAppProps(configuredProps, configurableProps);
 
     return this.client.actions.run({
       id: componentKey,
@@ -177,13 +207,11 @@ export class PipedreamClientService implements OnDestroy {
     return result;
   }
 
-  ngOnDestroy(): void {
-    // FrontendClient does not require explicit cleanup currently
-  }
-
   // ── Private ───────────────────────────────────────────────────────────────
 
-  private async fetchToken(_opts: { externalUserId: string }): Promise<CreateTokenResponse> {
+  private async fetchToken(_opts: {
+    externalUserId: string;
+  }): Promise<CreateTokenResponse> {
     const response = await fetch(this.config.tokenEndpointUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -9,12 +9,11 @@ export type {
   StepOutputSchema,
 } from './lib/models/workflow.model';
 
-// Services
-export { WorkflowService } from './lib/services/workflow.service';
-export { WorkflowApiService } from './lib/services/workflow-api.service';
-export { PipedreamMcpService } from './lib/services/pipedream-mcp.service';
+// Services (re-exported from @poc/data-access-api)
+export { WorkflowService, WorkflowApiService, PipedreamMcpService } from '@poc/data-access-api';
 
 // Components
+export { WorkflowsPageComponent } from './lib/components/workflows-page/workflows-page';
 export { WorkflowListComponent } from './lib/components/workflow-list/workflow-list';
 export { WorkflowBuilderComponent } from './lib/components/workflow-builder/workflow-builder';
 export { WorkflowStepComponent } from './lib/components/workflow-step/workflow-step';

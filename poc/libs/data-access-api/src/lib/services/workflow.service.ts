@@ -5,7 +5,7 @@ import type {
   WorkflowStepData,
   StepOutputSchema,
   PipedreamStep,
-} from '../models/workflow.model';
+} from '../workflow.model';
 import { PipedreamClientService } from '@poc/connect-angular';
 import { WorkflowApiService } from './workflow-api.service';
 

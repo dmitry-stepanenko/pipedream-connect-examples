@@ -20,10 +20,9 @@ import {
   type UiChatResourceRef,
 } from '@hashbrownai/angular';
 import { type Chat, prompt, s } from '@hashbrownai/core';
-import { PipedreamMcpService } from '../../services/pipedream-mcp.service';
+import { PipedreamMcpService, WorkflowService } from '@poc/data-access-api';
 import { PipedreamClientService, CUSTOM_TRIGGERS } from '@poc/connect-angular';
-import { WorkflowService } from '../../services/workflow.service';
-import type { PipedreamStep, StepOutputSchema } from '../../models/workflow.model';
+import type { PipedreamStep, StepOutputSchema } from '@poc/data-access-api';
 import { getTriggerSchema, KNOWN_TRIGGER_SCHEMAS } from '../../models/trigger-schemas';
 
 // ── Exposed components the AI can render ────────────────────────────────────

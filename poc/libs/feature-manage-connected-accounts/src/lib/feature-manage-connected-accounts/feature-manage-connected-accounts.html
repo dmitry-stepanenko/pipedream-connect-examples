@@ -1,0 +1,77 @@
+<div class="pd-accounts-page">
+  <div class="pd-accounts-header">
+    <h2 class="pd-accounts-title">Connected Accounts</h2>
+    <button
+      type="button"
+      class="pd-btn pd-btn--ghost"
+      [disabled]="accountsResource.isLoading()"
+      (click)="accountsResource.reload()"
+    >
+      @if (accountsResource.isLoading()) { Loading… } @else { Refresh }
+    </button>
+  </div>
+
+  @if (disconnectError()) {
+    <p class="pd-error">{{ disconnectError() }}</p>
+  }
+
+  @if (accountsResource.error()) {
+    @if (accountsResource.isLoading()) {
+      <p class="pd-empty">Retrying…</p>
+    }@else {
+      <p class="pd-error">
+        Failed to load accounts.
+        <button type="button" class="pd-btn-link" (click)="accountsResource.reload()">Retry</button>
+      </p>
+    }
+  } @else if (accountsResource.isLoading() && !accountsResource.value()?.length ) {
+    <p class="pd-empty">Loading accounts…</p>
+  } @else if (!accountsResource.value()?.length) {
+    <p class="pd-empty">No connected accounts yet.</p>
+  } @else {
+    <div class="pd-accounts-list">
+      @for (account of accountsResource.value()!; track account.id) {
+        <div class="pd-account-row" [class.pd-account-row--dead]="account.dead">
+          <div class="pd-account-main">
+            <div class="pd-account-identity">
+              <span class="pd-account-app-badge">{{ account.app?.name ?? account.app?.nameSlug }}</span>
+              <span class="pd-account-name">{{ account.name ?? account.id }}</span>
+              @if (account.dead) {
+                <span class="pd-status-badge pd-status-badge--dead">dead</span>
+              } @else if (account.healthy === false) {
+                <span class="pd-status-badge pd-status-badge--unhealthy">unhealthy</span>
+              } @else if (account.healthy) {
+                <span class="pd-status-badge pd-status-badge--healthy">healthy</span>
+              }
+            </div>
+            <div class="pd-account-meta">
+              @if (account.createdAt) {
+                <span class="pd-meta-item">
+                  <span class="pd-meta-label">Connected</span>
+                  <span class="pd-meta-value">{{ account.createdAt | date:'mediumDate' }}</span>
+                </span>
+              }
+              @if (account.lastRefreshedAt) {
+                <span class="pd-meta-item">
+                  <span class="pd-meta-label">Last refreshed</span>
+                  <span class="pd-meta-value">{{ account.lastRefreshedAt | date:'medium' }}</span>
+                </span>
+              }
+            </div>
+            @if (account.error) {
+              <p class="pd-account-error">{{ account.error }}</p>
+            }
+          </div>
+          <button
+            type="button"
+            class="pd-btn pd-btn--danger"
+            [disabled]="disconnecting() === account.id"
+            (click)="disconnect(account)"
+          >
+            @if (disconnecting() === account.id) { Disconnecting… } @else { Disconnect }
+          </button>
+        </div>
+      }
+    </div>
+  }
+</div>

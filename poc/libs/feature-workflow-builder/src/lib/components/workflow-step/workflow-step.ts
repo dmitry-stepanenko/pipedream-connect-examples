@@ -1,5 +1,5 @@
 import { Component, input, output, computed, inject } from '@angular/core';
-import type { WorkflowStep, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
+import type { WorkflowStep, PipedreamStep, CustomTriggerStep } from '@poc/data-access-api';
 import { CUSTOM_TRIGGERS } from '@poc/connect-angular';
 
 @Component({

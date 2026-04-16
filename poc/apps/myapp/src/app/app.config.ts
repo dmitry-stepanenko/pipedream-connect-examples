@@ -1,4 +1,5 @@
 import { ApplicationConfig } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import {
   provideConnectAngular,
   provideCustomTriggers,
@@ -6,6 +7,7 @@ import {
 import type { CustomTrigger } from '@poc/connect-angular';
 import { provideHashbrown } from '@hashbrownai/angular';
 import { environment } from '../environments/environment';
+import { appRoutes } from './app.routes';
 
 // -- Sample custom triggers -----------------------------------------------
 // Replace with your real internal business events.
@@ -73,6 +75,7 @@ const customTriggers: CustomTrigger[] = [
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    provideRouter(appRoutes),
     provideConnectAngular({
       tokenEndpointUrl: `${environment.apiUrl}/api/pipedream/token`,
       apiBaseUrl: environment.apiUrl,

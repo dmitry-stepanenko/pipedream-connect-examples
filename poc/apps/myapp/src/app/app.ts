@@ -1,54 +1,67 @@
 import { Component } from '@angular/core';
-import {
-  WorkflowListComponent,
-  WorkflowBuilderComponent,
-} from '@poc/feature-workflow-builder';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [WorkflowListComponent, WorkflowBuilderComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <div class="app-layout">
-      <aside class="app-sidebar">
-        <h1 class="app-logo">Workflow Builder</h1>
-        <pd-workflow-list (open)="onWorkflowOpen($event)" />
-      </aside>
-
-      <main class="app-main">
-        <pd-workflow-builder />
-      </main>
+      <nav class="app-nav">
+        <span class="app-logo">Workflow Builder</span>
+        <a routerLink="/workflows" routerLinkActive="app-nav__link--active" class="app-nav__link">
+          Workflows
+        </a>
+        <a routerLink="/accounts" routerLinkActive="app-nav__link--active" class="app-nav__link">
+          Connected Accounts
+        </a>
+      </nav>
+      <div class="app-content">
+        <router-outlet />
+      </div>
     </div>
   `,
   styles: [`
+    :host { display: block; height: 100vh; }
     .app-layout {
       display: flex;
-      height: 100vh;
+      flex-direction: column;
+      height: 100%;
       font-family: system-ui, sans-serif;
     }
-    .app-sidebar {
-      width: 280px;
-      border-right: 1px solid #e5e7eb;
-      padding: 16px;
-      overflow-y: auto;
-      background: #f9fafb;
+    .app-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      height: 52px;
+      padding: 0 1.25rem;
+      border-bottom: 1px solid #e5e7eb;
+      background: #fff;
+      flex-shrink: 0;
     }
     .app-logo {
-      font-size: 18px;
+      font-size: 1rem;
       font-weight: 700;
-      margin: 0 0 24px;
       color: #111827;
+      margin-right: 1.5rem;
     }
-    .app-main {
+    .app-nav__link {
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      color: #374151;
+      text-decoration: none;
+    }
+    .app-nav__link:hover { background: #f3f4f6; }
+    .app-nav__link--active {
+      background: #eef2ff;
+      color: #4f46e5;
+      font-weight: 500;
+    }
+    .app-content {
       flex: 1;
-      padding: 24px;
-      overflow-y: auto;
+      overflow: hidden;
     }
   `],
 })
-export class App {
-  protected onWorkflowOpen(_id: string) {
-    // WorkflowService already tracks the active workflow via setActiveWorkflow()
-    // called inside WorkflowListComponent -- nothing extra needed here
-  }
-}
+export class App {}

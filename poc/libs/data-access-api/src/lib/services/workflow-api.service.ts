@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { PIPEDREAM_CONFIG } from '@poc/connect-angular';
-import type { Workflow } from '../models/workflow.model';
+import type { Workflow } from '../workflow.model';
 
 @Injectable({ providedIn: 'root' })
 export class WorkflowApiService {

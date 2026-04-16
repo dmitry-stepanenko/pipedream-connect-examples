@@ -1,0 +1,175 @@
+.pd-accounts-page {
+  max-width: 760px;
+  padding: 1.5rem;
+}
+
+.pd-accounts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.pd-accounts-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.pd-empty {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.pd-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #dc2626;
+  margin-bottom: 1rem;
+}
+
+/* Account list */
+.pd-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pd-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.pd-account-row--dead {
+  opacity: 0.6;
+  background: #fafafa;
+}
+
+.pd-account-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pd-account-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.pd-account-app-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #4f46e5;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.pd-account-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+/* Status badges */
+.pd-status-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pd-status-badge--healthy { background: #dcfce7; color: #15803d; }
+.pd-status-badge--unhealthy { background: #fef3c7; color: #92400e; }
+.pd-status-badge--dead { background: #fee2e2; color: #991b1b; }
+
+/* Meta row */
+.pd-account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pd-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+}
+
+.pd-meta-label {
+  color: #9ca3af;
+}
+
+.pd-meta-value {
+  color: #374151;
+  font-family: inherit;
+}
+
+code.pd-meta-value {
+  font-family: monospace;
+  font-size: 0.73rem;
+}
+
+.pd-account-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #dc2626;
+}
+
+/* Buttons */
+.pd-btn {
+  padding: 0.4rem 0.85rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 0.825rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pd-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.pd-btn--ghost {
+  background: transparent;
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+.pd-btn--ghost:hover:not(:disabled) { background: #f3f4f6; }
+
+.pd-btn--danger {
+  background: #fff;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.pd-btn--danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.pd-btn-link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}

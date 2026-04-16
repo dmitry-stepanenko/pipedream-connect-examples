@@ -196,6 +196,20 @@ app.delete('/api/mcp', async (c) => {
   }
 });
 
+// ── Accounts ──────────────────────────────────────────────────────────────
+
+app.delete('/api/accounts/:id', async (c) => {
+  const accountId = c.req.param('id');
+  const pd = createPipedreamClient(c.env);
+  try {
+    await pd.accounts.delete(accountId);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete account:', err);
+    return c.json({ error: 'Failed to delete account' }, 500);
+  }
+});
+
 // ── Workflow & Webhook routes ──────────────────────────────────────────────
 
 app.route('/api/workflows', workflows);
