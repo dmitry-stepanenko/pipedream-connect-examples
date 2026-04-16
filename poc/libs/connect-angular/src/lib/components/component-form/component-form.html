@@ -1,4 +1,4 @@
-<form class="pd-component-form" (ngSubmit)="onSubmit()">
+<form class="pd-component-form">
   @if (reloading()) {
     <div class="pd-reloading-overlay">Updating form...</div>
   }
@@ -139,7 +139,4 @@
     </div>
   }
 
-  <button type="submit" class="pd-submit-btn" [disabled]="submitting() || reloading()">
-    {{ submitting() ? 'Saving...' : 'Save' }}
-  </button>
 </form>

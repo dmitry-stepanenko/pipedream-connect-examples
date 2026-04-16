@@ -37,6 +37,8 @@ export class WorkflowBuilderComponent {
   protected readonly panelTab = signal<'details' | 'chat'>('details');
   protected readonly testingStepId = signal<string | null>(null);
   protected readonly testError = signal<string | null>(null);
+  protected readonly saving = signal(false);
+  protected readonly saveError = signal<string | null>(null);
   protected readonly publishing = signal(false);
   protected readonly publishError = signal<string | null>(null);
   protected readonly triggering = signal(false);
@@ -181,12 +183,29 @@ export class WorkflowBuilderComponent {
     this.testingStepId.set(null);
   }
 
+  protected async save() {
+    const w = this.workflow;
+    if (!w) return;
+    this.saving.set(true);
+    this.saveError.set(null);
+    try {
+      await this.workflowService.save(w.id);
+    } catch (err) {
+      this.saveError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   protected async publish() {
     const w = this.workflow;
     if (!w) return;
     this.publishing.set(true);
     this.publishError.set(null);
     try {
+      if (this.workflowService.dirty()) {
+        await this.workflowService.save(w.id);
+      }
       await this.workflowService.publishWorkflow(w.id);
     } catch (err) {
       this.publishError.set(

@@ -32,11 +32,13 @@ export class WorkflowService {
   private readonly _workflows = signal<Workflow[]>([]);
   private readonly _activeWorkflowId = signal<string | null>(null);
   private readonly _loading = signal(false);
+  private readonly _dirty = signal(false);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
   readonly workflows = this._workflows.asReadonly();
   readonly loading = this._loading.asReadonly();
+  readonly dirty = this._dirty.asReadonly();
 
   readonly activeWorkflow = computed(() => {
     const id = this._activeWorkflowId();
@@ -52,6 +54,7 @@ export class WorkflowService {
     try {
       const workflows = await this.api.listWorkflows();
       this._workflows.set(workflows);
+      this._dirty.set(false);
     } catch (err) {
       console.error('Failed to load workflows:', err);
     } finally {
@@ -68,17 +71,14 @@ export class WorkflowService {
     return workflow;
   }
 
-  async updateWorkflow(
+  updateWorkflow(
     id: string,
     patch: Partial<Pick<Workflow, 'name' | 'description'>>,
   ) {
     this._workflows.update((list) =>
       list.map((w) => (w.id === id ? { ...w, ...patch } : w)),
     );
-    const workflow = this._workflows().find((w) => w.id === id);
-    if (workflow) {
-      await this.api.saveWorkflow(workflow);
-    }
+    this._dirty.set(true);
   }
 
   async deleteWorkflow(id: string) {
@@ -91,11 +91,12 @@ export class WorkflowService {
 
   setActiveWorkflow(id: string | null) {
     this._activeWorkflowId.set(id);
+    this._dirty.set(false);
   }
 
   // ── Step management ───────────────────────────────────────────────────────
 
-  async addStep(workflowId: string): Promise<WorkflowStep> {
+  addStep(workflowId: string): WorkflowStep {
     const step: WorkflowStep = {
       id: generateId(),
       type: 'action',
@@ -108,11 +109,11 @@ export class WorkflowService {
           : w,
       ),
     );
-    await this.persist(workflowId);
+    this._dirty.set(true);
     return step;
   }
 
-  async removeStep(workflowId: string, stepId: string) {
+  removeStep(workflowId: string, stepId: string) {
     this._workflows.update((list) =>
       list.map((w) =>
         w.id === workflowId
@@ -120,10 +121,10 @@ export class WorkflowService {
           : w,
       ),
     );
-    await this.persist(workflowId);
+    this._dirty.set(true);
   }
 
-  async configureStep(
+  configureStep(
     workflowId: string,
     stepId: string,
     data: WorkflowStepData | null,
@@ -140,10 +141,10 @@ export class WorkflowService {
           : w,
       ),
     );
-    await this.persist(workflowId);
+    this._dirty.set(true);
   }
 
-  async setStepOutputSchema(
+  setStepOutputSchema(
     workflowId: string,
     stepId: string,
     schema: StepOutputSchema | null,
@@ -162,7 +163,7 @@ export class WorkflowService {
           : w,
       ),
     );
-    await this.persist(workflowId);
+    this._dirty.set(true);
   }
 
   private setStepTestStatus(
@@ -246,7 +247,7 @@ export class WorkflowService {
 
       const returnValue = typedResult.ret ?? typedResult.exports ?? null;
       const schema = this.inferSchema(returnValue);
-      await this.setStepOutputSchema(workflowId, stepId, schema);
+      this.setStepOutputSchema(workflowId, stepId, schema);
       return {
         success: true,
         error: null,
@@ -301,7 +302,7 @@ export class WorkflowService {
         return { ...w, steps: retyped };
       }),
     );
-    await this.persist(workflowId);
+    this._dirty.set(true);
   }
 
   // ── Publish / Unpublish ───────────────────────────────────────────────────
@@ -344,14 +345,11 @@ export class WorkflowService {
 
   // ── Persistence ───────────────────────────────────────────────────────────
 
-  private async persist(workflowId: string) {
+  async save(workflowId: string): Promise<void> {
     const workflow = this._workflows().find((w) => w.id === workflowId);
     if (workflow) {
-      try {
-        await this.api.saveWorkflow(workflow);
-      } catch (err) {
-        console.error('Failed to save workflow:', err);
-      }
+      await this.api.saveWorkflow(workflow);
+      this._dirty.set(false);
     }
   }
 }

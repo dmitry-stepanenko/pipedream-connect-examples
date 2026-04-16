@@ -26,8 +26,24 @@
           <span class="pd-status-badge pd-status-badge--{{ workflow.status }}">
             {{ workflow.status }}
           </span>
+          @if (workflowService.dirty()) {
+            <span class="pd-unsaved-badge">unsaved</span>
+          }
         </div>
         <div class="pd-builder-header__right">
+          @if (saveError()) {
+            <span class="pd-save-error">{{ saveError() }}</span>
+          }
+          @if (workflowService.dirty()) {
+            <button
+              type="button"
+              class="pd-btn pd-btn--secondary"
+              [disabled]="saving()"
+              (click)="save()"
+            >
+              @if (saving()) { Saving… } @else { Save }
+            </button>
+          }
           @if (isPublished()) {
             <button
               type="button"

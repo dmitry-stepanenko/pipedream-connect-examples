@@ -41,12 +41,9 @@ export class ComponentFormComponent {
   configuredProps = input<ConfiguredProps>({});
   /** Emits the full updated configuredProps on every field change */
   configure = output<ConfiguredProps>();
-  /** Emits when user clicks Submit */
-  submitted = output<ConfiguredProps>();
 
   protected readonly props = signal<ConfigurableProp[]>([]);
   protected readonly reloading = signal(false);
-  protected readonly submitting = signal(false);
   protected readonly dynamicPropsId = signal<string | undefined>(undefined);
   /** Set of optional prop names the user has explicitly toggled on */
   protected readonly enabledOptional = signal<Set<string>>(new Set());
@@ -111,12 +108,6 @@ export class ComponentFormComponent {
     if (prop.reloadProps) {
       await this.reloadProps(updated, prop);
     }
-  }
-
-  protected onSubmit() {
-    this.submitting.set(true);
-    this.submitted.emit(this.configuredProps());
-    this.submitting.set(false);
   }
 
   /**

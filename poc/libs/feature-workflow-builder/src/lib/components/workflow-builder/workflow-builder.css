@@ -27,8 +27,11 @@
 .pd-builder-header {
   display: flex;
   justify-content: space-between;
+  flex-direction: column;
   align-items: center;
   margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid;
 }
 
 .pd-builder-header__left {
@@ -105,6 +108,21 @@
   border-radius: 4px;
   padding: 0.4rem 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+/* Unsaved indicator */
+.pd-unsaved-badge {
+  font-size: 0.7rem;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 9999px;
+  padding: 0.15rem 0.5rem;
+}
+
+.pd-save-error {
+  font-size: 0.75rem;
+  color: #dc2626;
 }
 
 /* Status badge */
