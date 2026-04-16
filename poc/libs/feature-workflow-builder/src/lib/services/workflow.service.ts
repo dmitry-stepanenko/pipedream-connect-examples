@@ -352,4 +352,12 @@ export class WorkflowService {
       this._dirty.set(false);
     }
   }
+
+  async revert(workflowId: string): Promise<void> {
+    const workflow = await this.api.getWorkflow(workflowId);
+    this._workflows.update((list) =>
+      list.map((w) => (w.id === workflowId ? workflow : w)),
+    );
+    this._dirty.set(false);
+  }
 }

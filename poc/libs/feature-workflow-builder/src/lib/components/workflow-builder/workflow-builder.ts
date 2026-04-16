@@ -197,6 +197,13 @@ export class WorkflowBuilderComponent {
     }
   }
 
+  protected async cancel() {
+    const w = this.workflow;
+    if (!w) return;
+    await this.workflowService.revert(w.id);
+    this.saveError.set(null);
+  }
+
   protected async publish() {
     const w = this.workflow;
     if (!w) return;

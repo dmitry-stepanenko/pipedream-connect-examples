@@ -37,6 +37,14 @@
           @if (workflowService.dirty()) {
             <button
               type="button"
+              class="pd-btn pd-btn--ghost"
+              [disabled]="saving()"
+              (click)="cancel()"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
               class="pd-btn pd-btn--secondary"
               [disabled]="saving()"
               (click)="save()"
