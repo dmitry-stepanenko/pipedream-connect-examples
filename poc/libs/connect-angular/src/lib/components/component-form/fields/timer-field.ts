@@ -1,14 +1,28 @@
 import { Component, input, output, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfigurableProp } from '@pipedream/sdk';
+import cronstrue from 'cronstrue';
 import { FieldWrapperComponent } from './field-wrapper';
 
 type TimerMode = 'cron' | 'interval';
+type IntervalUnit = 'second' | 'minute' | 'hour';
 
 interface TimerValue {
   cron?: string;
   intervalSeconds?: number;
 }
+
+function parseIntervalSeconds(seconds: number): { amount: number; unit: IntervalUnit } {
+  if (seconds % 3600 === 0) return { amount: seconds / 3600, unit: 'hour' };
+  if (seconds % 60 === 0) return { amount: seconds / 60, unit: 'minute' };
+  return { amount: seconds, unit: 'second' };
+}
+
+const UNIT_MULTIPLIERS: Record<IntervalUnit, number> = {
+  second: 1,
+  minute: 60,
+  hour: 3600,
+};
 
 @Component({
   selector: 'pd-timer-field',
@@ -37,20 +51,32 @@ interface TimerValue {
           [ngModel]="cronValue()"
           (ngModelChange)="onCronChange($event)"
           class="pd-input"
+          [class.pd-input--invalid]="cronHint()?.valid === false"
         />
+        @if (cronHint(); as hint) {
+          <p class="pd-cron-hint" [class.pd-cron-hint--error]="!hint.valid">{{ hint.text }}</p>
+        }
       } @else {
-        <div class="pd-interval-row">
+        <label class="pd-interval-row">
+          <div class="pd-interval-every">Every</div>
           <input
             [id]="prop().name"
             type="number"
             min="1"
-            placeholder="Seconds"
-            [ngModel]="intervalValue()"
-            (ngModelChange)="onIntervalChange($event)"
-            class="pd-input"
+            [ngModel]="intervalAmount()"
+            (ngModelChange)="onIntervalAmountChange($event)"
+            class="pd-input pd-input--amount"
           />
-          <span class="pd-interval-label">seconds</span>
-        </div>
+          <select
+            [ngModel]="intervalUnit()"
+            (ngModelChange)="onIntervalUnitChange($event)"
+            class="pd-input pd-input--unit"
+          >
+            <option value="second">second</option>
+            <option value="minute">minute</option>
+            <option value="hour">hour</option>
+          </select>
+        </label>
       }
     </pd-field-wrapper>
   `,
@@ -79,10 +105,21 @@ interface TimerValue {
       align-items: center;
       gap: 0.5rem;
     }
-    .pd-interval-label {
-      font-size: 0.85rem;
-      color: #666;
+    .pd-interval-every {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #374151;
+      white-space: nowrap;
     }
+    .pd-input--amount { width: 120px; }
+    .pd-input--unit { width: 180px; }
+    .pd-input--invalid { border-color: #ef4444; }
+    .pd-cron-hint {
+      margin: 0.25rem 0 0;
+      font-size: 0.8rem;
+      color: #16a34a;
+    }
+    .pd-cron-hint--error { color: #ef4444; }
   `],
 })
 export class TimerFieldComponent {
@@ -96,12 +133,35 @@ export class TimerFieldComponent {
   );
 
   protected readonly cronValue = computed(() => this.value()?.cron ?? '');
-  protected readonly intervalValue = computed(() => this.value()?.intervalSeconds ?? null);
+
+  protected readonly cronHint = computed<{ valid: boolean; text: string } | null>(() => {
+    const cron = this.cronValue();
+    if (!cron) return null;
+    if (cron.trim().split(/\s+/).length !== 5) {
+      return { valid: false, text: 'Must be a 5-field cron expression (minute hour day month weekday)' };
+    }
+    try {
+      return { valid: true, text: cronstrue.toString(cron) };
+    } catch {
+      return { valid: false, text: 'Invalid cron expression' };
+    }
+  });
+
+  protected readonly intervalAmount = computed(() => {
+    const s = this.value()?.intervalSeconds;
+    return s != null ? parseIntervalSeconds(s).amount : 1;
+  });
+
+  protected readonly intervalUnit = computed<IntervalUnit>(() => {
+    const s = this.value()?.intervalSeconds;
+    return s != null ? parseIntervalSeconds(s).unit : 'minute';
+  });
 
   protected setMode(m: TimerMode) {
-    // Emit a skeleton value so the parent updates value(), which drives mode()
     if (m === 'interval') {
-      this.valueChange.emit({ intervalSeconds: this.value()?.intervalSeconds ?? 0 });
+      this.valueChange.emit({
+        intervalSeconds: this.value()?.intervalSeconds ?? (1 * UNIT_MULTIPLIERS['minute']),
+      });
     } else {
       this.valueChange.emit({ cron: this.value()?.cron ?? '' });
     }
@@ -111,7 +171,11 @@ export class TimerFieldComponent {
     this.valueChange.emit({ cron });
   }
 
-  protected onIntervalChange(seconds: number) {
-    this.valueChange.emit({ intervalSeconds: seconds });
+  protected onIntervalAmountChange(amount: number) {
+    this.valueChange.emit({ intervalSeconds: amount * UNIT_MULTIPLIERS[this.intervalUnit()] });
+  }
+
+  protected onIntervalUnitChange(unit: IntervalUnit) {
+    this.valueChange.emit({ intervalSeconds: this.intervalAmount() * UNIT_MULTIPLIERS[unit] });
   }
 }
