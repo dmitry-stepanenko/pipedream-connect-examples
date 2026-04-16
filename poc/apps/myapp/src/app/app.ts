@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import {
   WorkflowListComponent,
   WorkflowBuilderComponent,
-} from '@poc/connect-angular';
+} from '@poc/feature-workflow-builder';
 
 @Component({
   selector: 'app-root',

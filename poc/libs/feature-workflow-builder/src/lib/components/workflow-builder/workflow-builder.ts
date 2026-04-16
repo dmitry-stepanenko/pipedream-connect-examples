@@ -8,10 +8,9 @@ import { DatePipe, JsonPipe } from '@angular/common';
 import type { ConfiguredProps } from '@pipedream/sdk';
 import { WorkflowService } from '../../services/workflow.service';
 import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
-import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
+import { CUSTOM_TRIGGERS, ComponentFormComponent } from '@poc/connect-angular';
 import { WorkflowStepComponent } from '../workflow-step/workflow-step';
 import { StepPickerComponent } from '../step-picker/step-picker';
-import { ComponentFormComponent } from '../component-form/component-form';
 import { ChatPanelComponent } from '../chat-panel/chat-panel';
 
 @Component({

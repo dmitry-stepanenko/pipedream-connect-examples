@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Chat } from '@hashbrownai/core';
 import { createTool } from '@hashbrownai/angular';
-import { PIPEDREAM_CONFIG } from '../tokens/pipedream-config.token';
+import { PIPEDREAM_CONFIG } from '@poc/connect-angular';
 
 const TOOL_TIMEOUT_MS = 180_000; // 3 minutes, matching Pipedream reference
 

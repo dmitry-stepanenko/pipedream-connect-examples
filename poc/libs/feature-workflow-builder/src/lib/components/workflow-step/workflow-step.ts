@@ -1,6 +1,6 @@
 import { Component, input, output, computed, inject } from '@angular/core';
 import type { WorkflowStep, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
-import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
+import { CUSTOM_TRIGGERS } from '@poc/connect-angular';
 
 @Component({
   selector: 'pd-workflow-step',

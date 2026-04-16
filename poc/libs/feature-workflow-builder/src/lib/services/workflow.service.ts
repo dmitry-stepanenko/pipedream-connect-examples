@@ -6,7 +6,7 @@ import type {
   StepOutputSchema,
   PipedreamStep,
 } from '../models/workflow.model';
-import { PipedreamClientService } from './pipedream-client.service';
+import { PipedreamClientService } from '@poc/connect-angular';
 import { WorkflowApiService } from './workflow-api.service';
 
 export interface TestStepResult {

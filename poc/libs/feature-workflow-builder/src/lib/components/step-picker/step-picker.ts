@@ -1,9 +1,7 @@
 import { Component, input, output, signal, inject } from '@angular/core';
 import { App, Component as PdComponent } from '@pipedream/sdk';
-import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
+import { CUSTOM_TRIGGERS, AppSelectorComponent, ComponentSelectorComponent } from '@poc/connect-angular';
 import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '../../models/workflow.model';
-import { AppSelectorComponent } from '../app-selector/app-selector';
-import { ComponentSelectorComponent } from '../component-selector/component-selector';
 
 type PickerMode = 'choose-source' | 'custom' | 'pipedream-app' | 'pipedream-component';
 

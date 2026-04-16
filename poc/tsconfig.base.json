@@ -15,7 +15,10 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@poc/connect-angular": ["libs/connect-angular/src/index.ts"]
+      "@poc/connect-angular": ["libs/connect-angular/src/index.ts"],
+      "@poc/feature-workflow-builder": [
+        "libs/feature-workflow-builder/src/index.ts"
+      ]
     }
   },
   "exclude": ["node_modules", "tmp"]

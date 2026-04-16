@@ -21,9 +21,8 @@ import {
 } from '@hashbrownai/angular';
 import { type Chat, prompt, s } from '@hashbrownai/core';
 import { PipedreamMcpService } from '../../services/pipedream-mcp.service';
-import { PipedreamClientService } from '../../services/pipedream-client.service';
+import { PipedreamClientService, CUSTOM_TRIGGERS } from '@poc/connect-angular';
 import { WorkflowService } from '../../services/workflow.service';
-import { CUSTOM_TRIGGERS } from '../../tokens/custom-triggers.token';
 import type { PipedreamStep, StepOutputSchema } from '../../models/workflow.model';
 import { getTriggerSchema, KNOWN_TRIGGER_SCHEMAS } from '../../models/trigger-schemas';
 
