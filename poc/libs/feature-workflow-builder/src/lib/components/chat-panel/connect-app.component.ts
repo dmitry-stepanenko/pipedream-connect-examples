@@ -1,4 +1,12 @@
-import { Component, InjectionToken, inject, input, signal, computed } from '@angular/core';
+import {
+  Component,
+  InjectionToken,
+  inject,
+  input,
+  signal,
+  computed,
+  effect,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import {
   MatDialog,
@@ -16,9 +24,9 @@ export interface AppPropConfig {
   name: string;
 }
 
-export const CHAT_SEND_MESSAGE = new InjectionToken<
-  (message: string) => void
->('CHAT_SEND_MESSAGE');
+export const CHAT_SEND_MESSAGE = new InjectionToken<(message: string) => void>(
+  'CHAT_SEND_MESSAGE',
+);
 
 @Component({
   selector: 'pd-connect-app',
@@ -28,11 +36,7 @@ export const CHAT_SEND_MESSAGE = new InjectionToken<
     @if (appName(); as name) {
       @switch (state()) {
         @case ('idle') {
-          <button
-            mat-flat-button
-            class="connect-btn"
-            (click)="handleConnect()"
-          >
+          <button mat-flat-button class="connect-btn" (click)="handleConnect()">
             <i class="fa-solid fa-plug"></i>
             Connect {{ name }}
           </button>
@@ -53,6 +57,12 @@ export const CHAT_SEND_MESSAGE = new InjectionToken<
           <div class="connected">
             <i class="fa-solid fa-check"></i>
             {{ name }} connected
+          </div>
+        }
+        @case ('outdated') {
+          <div class="error-row">
+            <span class="error-text">{{ name }} account disconnected</span>
+            <button mat-button (click)="handleConnect()">Reconnect</button>
           </div>
         }
         @case ('error') {
@@ -116,14 +126,18 @@ export class ConnectAppComponent {
   readonly stepId = input.required<string>();
 
   readonly state = signal<
-    'idle' | 'loading' | 'connecting' | 'connected' | 'error'
+    'idle' | 'loading' | 'connecting' | 'connected' | 'outdated' | 'error'
   >('idle');
 
+  private readonly _currentWorkflow = computed(() =>
+    this.workflowService.workflows().find((w) => w.id === this.workflowId()),
+  );
+  private readonly _currentStep = computed(() =>
+    this._currentWorkflow()?.steps.find((s) => s.id === this.stepId()),
+  );
+
   private readonly resolvedProp = computed<AppPropConfig | null>(() => {
-    const workflow = this.workflowService
-      .workflows()
-      .find((w) => w.id === this.workflowId());
-    const step = workflow?.steps.find((s) => s.id === this.stepId());
+    const step = this._currentStep();
     if (!step?.data || step.data.source !== 'pipedream') return null;
 
     const pdStep = step.data as PipedreamStep;
@@ -134,11 +148,23 @@ export class ConnectAppComponent {
     return prop ?? null;
   });
 
+  private readonly configuredAccountId = computed<string | null>(() => {
+    const prop = this.resolvedProp();
+    const step = this._currentStep();
+    if (!prop || !step?.data || step.data.source !== 'pipedream') return null;
+    const value = (step.data as PipedreamStep).configuredProps[prop.name];
+    return typeof value === 'string' ? value : null;
+  });
+
   protected readonly appName = computed<string | null>(() => {
     const prop = this.resolvedProp();
     if (!prop) return null;
     return prop.name.charAt(0).toUpperCase() + prop.name.slice(1);
   });
+
+  constructor() {
+    this._validateStateForAnExistingAccountEffect();
+  }
 
   async handleConnect() {
     this.state.set('loading');
@@ -165,7 +191,10 @@ export class ConnectAppComponent {
     }
   }
 
-  private openAccountPicker(appProp: AppPropConfig, accounts: { id: string; name: string }[]) {
+  private openAccountPicker(
+    appProp: AppPropConfig,
+    accounts: { id: string; name: string }[],
+  ) {
     const ref = this.dialog.open(AccountPickerDialogComponent, {
       width: '360px',
       data: { appSlug: appProp.app, appName: this.appName()!, accounts },
@@ -190,21 +219,45 @@ export class ConnectAppComponent {
   }
 
   private async onAccountSelected(appProp: AppPropConfig, accountId: string) {
-    const workflow = this.workflowService
-      .workflows()
-      .find((w) => w.id === this.workflowId());
-    const step = workflow?.steps.find((s) => s.id === this.stepId());
+    const step = this._currentStep();
     if (step?.data?.source === 'pipedream') {
       const current = step.data as PipedreamStep;
       this.workflowService.configureStep(this.workflowId(), this.stepId(), {
         ...current,
-        configuredProps: { ...current.configuredProps, [appProp.name]: accountId },
+        configuredProps: {
+          ...current.configuredProps,
+          [appProp.name]: accountId,
+        },
       });
       await this.workflowService.save(this.workflowId());
     }
 
     this.state.set('connected');
     this.sendMessage(`I've connected my ${this.appName()!} account.`);
+  }
+
+  private _validateStateForAnExistingAccountEffect() {
+    const effectRef = effect(() => {
+      const prop = this.resolvedProp();
+      const accountId = this.configuredAccountId();
+      if (!prop) return;
+      if (accountId) {
+        // do not await
+        runValidation(prop.app, accountId);
+      }
+      effectRef.destroy();
+    });
+
+    const runValidation = async (app: string, accountId: string) => {
+      this.state.set('loading');
+      try {
+        const accounts = await this.pdClient.listAccounts(app);
+        const ids: string[] = (accounts.data ?? []).map((a) => a.id);
+        this.state.set(ids.includes(accountId) ? 'connected' : 'outdated');
+      } catch {
+        this.state.set('error');
+      }
+    };
   }
 }
 
@@ -241,7 +294,11 @@ interface AccountPickerData {
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-flat-button color="primary" [mat-dialog-close]="'__connect_new__'">
+      <button
+        mat-flat-button
+        color="primary"
+        [mat-dialog-close]="'__connect_new__'"
+      >
         <i class="fa-solid fa-plug"></i>
         Connect new account
       </button>

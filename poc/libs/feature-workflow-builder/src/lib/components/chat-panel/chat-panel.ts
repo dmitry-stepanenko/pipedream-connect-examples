@@ -37,6 +37,7 @@ import {
   ConnectAppComponent,
   CHAT_SEND_MESSAGE,
 } from './connect-app.component';
+import { PropOption, PropOptionValue } from '@pipedream/sdk';
 
 @Component({
   selector: 'pd-workflow-suggestion-card',
@@ -346,15 +347,15 @@ export class ChatPanelComponent implements AfterViewInit {
             }
           : null,
         allProperties: props
-          .filter((p: any) => p.type !== 'app')
-          .map((p: any) => ({
+          .filter((p) => p.type !== 'app')
+          .map((p) => ({
             name: p.name,
             label: p.label ?? p.name,
             type: p.type,
             description: p.description ?? '',
             optional: !!p.optional,
-            default: p.default,
-            options: p.options ?? null,
+            default: (p as any).default,
+            options: (p as any).options ?? null,
             remoteOptions: !!p.remoteOptions,
           })),
       };
@@ -368,16 +369,26 @@ export class ChatPanelComponent implements AfterViewInit {
     description:
       'Set property values on an already-configured workflow step. Call this AFTER ' +
       "configure_step to fill in the step's required and optional properties. " +
-      "Pass a JSON string in propsJson where keys are property names (from configure_step's " +
-      'allProperties response) and values are the desired settings. ' +
-      'Example propsJson: \'{"text": "Hello world", "channelType": "Public Channel", "conversation": "#general"}\'. ' +
       'You can call this multiple times to update props incrementally.',
     schema: s.object('SetStepPropsInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to set properties on'),
-      propsJson: s.string(
-        "A JSON string of property key-value pairs. Keys are property names from configure_step's allProperties. " +
-          'Values must match the property types (string, integer, boolean, etc.).',
+      props: s.array(
+        'List of properties to set on the step',
+        s.object(
+          'PropEntry — CRITICAL: for props with options, the "value" field is the machine-readable selection the API requires (may be an ID, a slug, a code, or any non-display string). NEVER use the "label" — it is display text only and will be rejected or produce wrong results.',
+          {
+            name: s.string(
+              'Property name — must exactly match a name from configure_step allProperties. ' +
+                'Any unknown name will be rejected.',
+            ),
+            value: s.anyOf([
+              s.string('String value for string props'),
+              s.number('Numeric value for number/integer props'),
+              s.boolean('Boolean value for boolean props'),
+            ]),
+          },
+        ),
       ),
     }),
     handler: async (
@@ -387,15 +398,12 @@ export class ChatPanelComponent implements AfterViewInit {
       error: string | null;
       configuredProps: Record<string, unknown> | null;
     }> => {
-      let props: Record<string, unknown>;
-      try {
-        props = JSON.parse(input.propsJson);
-      } catch {
-        return {
-          success: false,
-          error: 'Invalid JSON in propsJson',
-          configuredProps: null,
-        };
+      const props: Record<string, PropOptionValue> = {};
+      for (const entry of input.props as {
+        name: string;
+        value: string | number | boolean;
+      }[]) {
+        props[entry.name] = entry.value;
       }
       const workflow = this.workflowService
         .workflows()
@@ -415,6 +423,55 @@ export class ChatPanelComponent implements AfterViewInit {
         };
       }
       const current = step.data as PipedreamStep;
+      const validNames = new Set(
+        (current.component.configurableProps ?? []).map((p) => p.name),
+      );
+      const unknown = Object.keys(props).filter((k) => !validNames.has(k));
+      if (unknown.length > 0) {
+        console.log('OOOHH', JSON.parse(JSON.stringify({ unknown })));
+        return {
+          success: false,
+          error: `Unknown properties: ${unknown.join(', ')}. Only use names from configure_step's allProperties list.`,
+          configuredProps: null,
+        };
+      }
+      // For props with remoteOptions, the LLM must use the machine-readable "value"
+      // (e.g. a channel ID like "C0123456"), not the human-readable "label". Even with
+      // explicit instructions, LLMs tend to rationalize using the label when the user
+      // mentions a name directly (e.g. "#general"). We enforce correctness here by
+      // fetching valid options and rejecting any value not in the list, returning the
+      // options so the LLM can self-correct with the right value.
+      for (const [key, val] of Object.entries(props)) {
+        const propDef = current.component.configurableProps?.find(
+          (p) => p.name === key,
+        );
+        if (!propDef?.remoteOptions) continue;
+        try {
+          const res = await this.pdClient.configureProp(
+            current.component.key,
+            key,
+            current.configuredProps as Record<string, unknown>,
+            current.component.configurableProps ?? [],
+          );
+          const options = (res.options ?? []).map((o) =>
+            'lv' in o ? o.lv : o,
+          );
+
+          const validValues = options.map((o) => o.value);
+          if (validValues.length > 0 && !validValues.includes(val)) {
+            return {
+              success: false,
+              error:
+                `Invalid value "${val}" for property "${key}". ` +
+                `You must use the "value" field from the available options: ${JSON.stringify(options)}`,
+              configuredProps: null,
+            };
+          }
+        } catch {
+          // If fetching options fails, allow the value through rather than blocking
+        }
+      }
+
       const merged = { ...current.configuredProps, ...props };
       this.workflowService.configureStep(input.workflowId, input.stepId, {
         ...current,
@@ -454,7 +511,7 @@ export class ChatPanelComponent implements AfterViewInit {
         componentType: type,
         limit: 30,
       });
-      const components = ((response as any).data ?? []).map((c: any) => ({
+      const components = (response.data ?? []).map((c) => ({
         key: c.key,
         name: c.name,
         description: c.description,
@@ -570,6 +627,54 @@ export class ChatPanelComponent implements AfterViewInit {
     },
   });
 
+  private readonly getPropOptionsTool = createTool({
+    name: 'get_prop_options',
+    description:
+      'Fetch available options for a step property that has remoteOptions: true. ' +
+      'ALWAYS call this before setting a remoteOptions property via set_step_props — ' +
+      'never guess or infer values for such properties. ' +
+      'If this returns error: true, you MUST stop and inform the user — do NOT proceed with set_step_props for that property. ' +
+      'On success, use the "value" field of each option (never "label") when calling set_step_props.',
+    schema: s.object('GetPropOptionsInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID'),
+      propName: s.string('The property name to fetch options for'),
+    }),
+    handler: async (
+      input,
+    ): Promise<
+      { error: false; options: PropOption[] } | { error: true; reason: string }
+    > => {
+      const workflow = this.workflowService
+        .workflows()
+        .find((w) => w.id === input.workflowId);
+      const step = workflow?.steps.find((s) => s.id === input.stepId);
+      if (!step?.data || step.data.source !== 'pipedream') {
+        return {
+          error: true,
+          reason: 'Step not found or not a Pipedream step',
+        };
+      }
+      const pdStep = step.data as PipedreamStep;
+      try {
+        const res = await this.pdClient.configureProp(
+          pdStep.component.key,
+          input.propName,
+          pdStep.configuredProps as Record<string, unknown>,
+          pdStep.component.configurableProps ?? [],
+        );
+        const options = (res.options ?? []).map((o) => ('lv' in o ? o.lv : o));
+        console.log(
+          JSON.parse(JSON.stringify({ input, getPropOptions: options })),
+        );
+        return { error: false, options };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to fetch options';
+        return { error: true, reason: msg };
+      }
+    },
+  });
+
   /** Build a prompt fragment documenting known trigger event schemas. */
   private buildTriggerSchemaPrompt(): string {
     return KNOWN_TRIGGER_SCHEMAS.map((schema) => {
@@ -596,6 +701,7 @@ ${examples}
     this.listComponentsTool,
     this.configureStepTool,
     this.setStepPropsTool,
+    this.getPropOptionsTool,
     this.testStepTool,
     this.removeStepTool,
     this.updateWorkflowNameTool,
@@ -735,9 +841,12 @@ ${examples}
                 can't infer a reasonable default.
               - For optional properties with sensible defaults: set them if the
                 user's request implies specific values.
-              - For properties with remoteOptions: true, note that those need
-                dynamic values (e.g., Slack channel IDs). Set them to the best
-                value you can infer from context (channel name, etc.).
+              - For properties with remoteOptions: true, you MUST call
+                get_prop_options first to retrieve the valid {label, value} pairs,
+                then use the "value" field (never the "label") in set_step_props.
+                Never guess or infer values for remoteOptions properties — always
+                fetch them. This is a general rule: labels are human-readable
+                display text only; values are what the API requires.
               - For properties with fixed options, pick the matching option value.
 
               Example flow:

@@ -1,17 +1,21 @@
-1. it should show "connect" prompts in the UI
-2. make sure we're able to autogenerate the whole flow
+<!-- 1. it should show "connect" prompts in the UI -->
+<!-- 2. make sure we're able to autogenerate the whole flow -->
 3. openai gets serialized objects
 4. rewrite to use a real db instead of KV, reuse models
 5. interpolation should be resolved when testing the step
 6. suggestions and validation of interpolation in the UI
 7. show steps progress
+8. workflows pages with filters, list of trigger events and runs
 <!-- 3. have a place to manage connected accounts -->
 
 
 Bugs:
-1. when account is disconnected, it's not reflected in the workflow
+<!-- 1. when account is disconnected, it's not reflected in the workflow -->
 2. sometimes connected accounts do not show authorized data until you reconnect
 3. if configure step throws, it may try to call it again and again indefinitely
+<!-- 4. it's not always asking to connect or when it does, the llm stream is not finished -->
+<!-- 5. AI Chat does not wait for auth-guarded data of the step to be loaded -->
+
 <!-- 
 NOTES
 we need to be able to resolve interpolation in fields. I'd like to 

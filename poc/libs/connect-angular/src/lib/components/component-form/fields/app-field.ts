@@ -3,6 +3,7 @@ import {
   input,
   output,
   signal,
+  computed,
   inject,
   effect,
 } from '@angular/core';
@@ -22,36 +23,43 @@ interface Account {
   template: `
     @if (!noAuth()) {
       <pd-field-wrapper [prop]="prop()">
-        @if (value() && !picking(); as accountId) {
-          <div class="pd-connected-account">
-            <span class="pd-account-name">
-              {{ accountName() || accountId }}
-            </span>
-            <button type="button" class="pd-btn-link" (click)="showPicker()">
-              Change
-            </button>
-            <button
-              type="button"
-              class="pd-btn-disconnect"
-              (click)="disconnect()"
-            >
-              Disconnect
-            </button>
-          </div>
-        } @else if (picking()) {
-          <div class="pd-account-picker">
-            @if (value()) {
+        @switch (viewState()) {
+          @case ('connected') {
+            <div class="pd-connected-account">
+              <span class="pd-account-name">
+                {{ accountName() || value() }}
+              </span>
+              <button type="button" class="pd-btn-link" (click)="showPicker()">
+                Change
+              </button>
               <button
                 type="button"
-                class="pd-btn-link"
-                (click)="picking.set(false)"
+                class="pd-btn-disconnect"
+                (click)="disconnect()"
               >
-                ← Cancel
+                Disconnect
               </button>
-            }
-            @if (loadingAccounts()) {
-              <p class="pd-accounts-loading">Loading accounts…</p>
-            } @else {
+            </div>
+          }
+          @case ('outdated') {
+            <div class="pd-outdated-account">
+              <span class="pd-outdated-text">Account disconnected</span>
+              <button type="button" class="pd-btn-link" (click)="showPicker()">
+                Reconnect
+              </button>
+            </div>
+          }
+          @case ('picking') {
+            <div class="pd-account-picker">
+              @if (value()) {
+                <button
+                  type="button"
+                  class="pd-btn-link"
+                  (click)="picking.set(false)"
+                >
+                  ← Cancel
+                </button>
+              }
               @if (accounts().length > 0) {
                 <ul class="pd-accounts-list">
                   @for (account of accounts(); track account.id) {
@@ -75,14 +83,16 @@ interface Account {
               >
                 {{ connecting() ? 'Connecting…' : '+ Connect new account' }}
               </button>
-            }
-          </div>
-        } @else if (loadingAccounts()) {
-          <p class="pd-accounts-loading">Loading…</p>
-        } @else {
-          <button type="button" class="pd-connect-btn" (click)="showPicker()">
-            Connect {{ asApp().app }}
-          </button>
+            </div>
+          }
+          @case ('loading') {
+            <p class="pd-accounts-loading">Loading…</p>
+          }
+          @default {
+            <button type="button" class="pd-connect-btn" (click)="showPicker()">
+              Connect {{ asApp().app }}
+            </button>
+          }
         }
         @if (error()) {
           <p class="pd-error">
@@ -122,6 +132,20 @@ interface Account {
         font-size: 0.8rem;
         padding: 0;
         text-decoration: underline;
+      }
+      .pd-outdated-account {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background: #fefce8;
+        border: 1px solid #fde047;
+        border-radius: 4px;
+      }
+      .pd-outdated-text {
+        flex: 1;
+        font-size: 0.9rem;
+        color: #854d0e;
       }
       .pd-btn-disconnect {
         padding: 0.3rem 0.6rem;
@@ -194,7 +218,16 @@ export class AppFieldComponent {
   protected readonly loadingAccounts = signal(false);
   protected readonly connecting = signal(false);
   protected readonly picking = signal(false);
+  protected readonly outdated = signal(false);
   protected readonly error = signal<string | null>(null);
+
+  protected readonly viewState = computed<'loading' | 'connected' | 'outdated' | 'picking' | 'idle'>(() => {
+    if (this.loadingAccounts()) return 'loading';
+    if (this.picking()) return 'picking';
+    if (this.value() && this.outdated()) return 'outdated';
+    if (this.value()) return 'connected';
+    return 'idle';
+  });
 
   private readonly client = inject(PipedreamClientService);
 
@@ -221,6 +254,7 @@ export class AppFieldComponent {
 
   protected selectAccount(id: string) {
     this.picking.set(false);
+    this.outdated.set(false);
     this.valueChange.emit(id);
   }
 
@@ -231,6 +265,7 @@ export class AppFieldComponent {
       const result = await this.client.connectAccount(this.asApp().app);
       await this.loadAccounts(this.asApp().app);
       this.picking.set(false);
+      this.outdated.set(false);
       this.valueChange.emit(result.id);
     } catch {
       this.error.set('Connection failed. Please try again.');
@@ -240,6 +275,7 @@ export class AppFieldComponent {
   }
 
   protected disconnect() {
+    this.outdated.set(false);
     this.valueChange.emit(null);
   }
 
@@ -259,6 +295,10 @@ export class AppFieldComponent {
       }
       const data = (accountsRes as any).data ?? [];
       this.accounts.set(data.map((a: any) => ({ id: a.id, name: a.name })));
+      const currentId = this.value();
+      if (currentId) {
+        this.outdated.set(!data.some((a: { id: string }) => a.id === currentId));
+      }
     } catch {
       this.accounts.set([]);
       this.error.set('Failed to load accounts.');
