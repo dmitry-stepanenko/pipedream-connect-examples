@@ -33,6 +33,10 @@ import {
   MessagesComponent,
   type ChatToolMetadata,
 } from '@poc/ui-chat-elements';
+import {
+  ConnectAppComponent,
+  CHAT_SEND_MESSAGE,
+} from './connect-app.component';
 
 @Component({
   selector: 'pd-workflow-suggestion-card',
@@ -70,7 +74,16 @@ export class WorkflowSuggestionCard {
   selector: 'pd-chat-panel',
   standalone: true,
   imports: [MessagesComponent],
-  providers: [provideMarkdown()],
+  providers: [
+    provideMarkdown(),
+    {
+      provide: CHAT_SEND_MESSAGE,
+      useFactory: () => {
+        const panel = inject(ChatPanelComponent);
+        return (message: string) => panel.sendMessage(message);
+      },
+    },
+  ],
   template: `
     <div class="pd-chat-panel">
       <div class="pd-chat-messages">
@@ -267,8 +280,8 @@ export class ChatPanelComponent implements AfterViewInit {
         this.pdClient.getApp(input.appSlug),
         this.pdClient.getComponent(input.componentKey),
       ]);
-      const app = (appResponse as any).data;
-      const component = (componentResponse as any).data;
+      const app = appResponse.data;
+      const component = componentResponse.data;
       const data: PipedreamStep = {
         source: 'pipedream',
         app,
@@ -293,12 +306,12 @@ export class ChatPanelComponent implements AfterViewInit {
       }
 
       const props = component.configurableProps ?? [];
-      const authApps = props
-        .filter((p: any) => p.type === 'app')
-        .map((p: any) => p.app as string);
+      const appProps = props
+        .filter((p) => p.type === 'app')
+        .map((p) => ({ type: p.type, app: p.app, name: p.name }));
       const requiredProps = props
-        .filter((p: any) => p.type !== 'app' && !p.optional)
-        .map((p: any) => ({
+        .filter((p) => p.type !== 'app' && !p.optional)
+        .map((p) => ({
           name: p.name,
           label: p.label ?? p.name,
           type: p.type,
@@ -306,13 +319,25 @@ export class ChatPanelComponent implements AfterViewInit {
 
       await this.workflowService.save(input.workflowId);
 
-      return {
+      const appData =
+        !!appProps[0] && (await this.pdClient.getApp(appProps[0].app));
+      const authType = appData?.data?.authType;
+      const needsAuth = authType && authType !== 'none';
+
+      const result = {
         success: true,
+        ...(needsAuth
+          ? {
+              BLOCKED_ON_ACCOUNT_CONNECTION: true,
+              ACTION_REQUIRED:
+                'You MUST render a pd-connect-app component for each entry in accountsToConnect and WAIT for the user before calling set_step_props. ' +
+                'Pass each accountsToConnect object verbatim as the appProp input — do NOT construct the object yourself.',
+            }
+          : {}),
         app: app.name,
         component: component.name,
         componentType: component.componentType ?? 'action',
-        requiresAccountConnection: authApps.length > 0,
-        accountsToConnect: authApps,
+        requiresAccountConnection: needsAuth,
         requiredProperties: requiredProps,
         triggerEventSchema: triggerSchema
           ? {
@@ -333,6 +358,8 @@ export class ChatPanelComponent implements AfterViewInit {
             remoteOptions: !!p.remoteOptions,
           })),
       };
+      console.log({ configure_step: result });
+      return result;
     },
   });
 
@@ -684,9 +711,19 @@ ${examples}
             </error_handling>
 
             <account_connections>
-              When configure_step returns requiresAccountConnection: true, tell
-              the user which accounts need to be connected. List ALL steps that
-              need connections at the end of the workflow summary.
+              CRITICAL — read the configure_step result carefully:
+              If BLOCKED_ON_ACCOUNT_CONNECTION is true in the result, you are
+              FORBIDDEN from calling set_step_props on that step. Instead:
+
+              1. Immediately render a pd-connect-app component for EACH app
+                 listed in accountsToConnect.
+              2. Tell the user they need to connect the account first.
+              3. STOP and WAIT for the user to reply.
+              4. Only after the user confirms the account is connected may you
+                 proceed with set_step_props.
+
+              Skipping this step will cause all subsequent API calls to fail
+              because the account credentials are missing.
             </account_connections>
 
             <property_configuration>
@@ -788,6 +825,16 @@ ${examples}
               ),
             },
           }),
+          exposeComponent(ConnectAppComponent, {
+            description:
+              'Show a button for the user to connect a Pipedream app account (OAuth). ' +
+              'Use this when configure_step returns BLOCKED_ON_ACCOUNT_CONNECTION. ' +
+              'Render one per entry in accountsToConnect.',
+            input: {
+              workflowId: s.string('The workflow ID'),
+              stepId: s.string('The step ID being configured'),
+            },
+          }),
         ],
         tools: [...this.mcpService.tools(), ...this.clientTools],
       });
@@ -822,7 +869,8 @@ ${examples}
 
   ngAfterViewInit() {
     this.mcpService.connect();
-    this.textarea()!.nativeElement.value = `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them and sends a short report as a slack message`;
+    this.textarea()!.nativeElement.value = `I need a workflow that on schedule sends "hello" to my slack "General" channel at 9 a.m. every Monday`;
+    // this.textarea()!.nativeElement.value = `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them and sends a short report as a slack message`;
   }
 
   sendMessage(message: string) {

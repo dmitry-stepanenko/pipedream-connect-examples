@@ -11,7 +11,7 @@
 Bugs:
 1. when account is disconnected, it's not reflected in the workflow
 2. sometimes connected accounts do not show authorized data until you reconnect
-
+3. if configure step throws, it may try to call it again and again indefinitely
 <!-- 
 NOTES
 we need to be able to resolve interpolation in fields. I'd like to 
