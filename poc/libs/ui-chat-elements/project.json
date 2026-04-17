@@ -1,0 +1,19 @@
+{
+  "name": "esp-ai-assistant-ui-chat-elements",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/esp/ai-assistant/ui-chat-elements/src",
+  "prefix": "esp",
+  "projectType": "library",
+  "tags": ["scope:esp", "type:ui"],
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest"
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "stylelint": {
+      "executor": "nx-stylelint:lint"
+    }
+  }
+}

@@ -1,13 +1,16 @@
-1. interpolation should be resolved when testing the step
-2. suggestions and validation of interpolation in the UI
+1. it should show "connect" prompts in the UI
+2. make sure we're able to autogenerate the whole flow
+3. openai gets serialized objects
+4. rewrite to use a real db instead of KV, reuse models
+5. interpolation should be resolved when testing the step
+6. suggestions and validation of interpolation in the UI
+7. show steps progress
 <!-- 3. have a place to manage connected accounts -->
-4. it should show "connect" prompts in the UI
-5. make sure we're able to autogenerate the whole flow
-6. rewrite to use a real db instead of KV, reuse models
-7. openai gets serialized objects
-8. show steps progress
 
 
+Bugs:
+1. when account is disconnected, it's not reflected in the workflow
+2. sometimes connected accounts do not show authorized data until you reconnect
 
 <!-- 
 NOTES

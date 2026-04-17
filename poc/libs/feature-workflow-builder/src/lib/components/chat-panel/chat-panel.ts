@@ -1,6 +1,7 @@
 import {
   AfterViewInit,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -14,7 +15,6 @@ import {
 } from '@angular/core';
 import {
   exposeComponent,
-  RenderMessageComponent,
   uiChatResource,
   createTool,
   type UiChatResourceRef,
@@ -23,28 +23,16 @@ import { type Chat, prompt, s } from '@hashbrownai/core';
 import { PipedreamMcpService, WorkflowService } from '@poc/data-access-api';
 import { PipedreamClientService, CUSTOM_TRIGGERS } from '@poc/connect-angular';
 import type { PipedreamStep, StepOutputSchema } from '@poc/data-access-api';
-import { getTriggerSchema, KNOWN_TRIGGER_SCHEMAS } from '../../models/trigger-schemas';
-
-// ── Exposed components the AI can render ────────────────────────────────────
-
-@Component({
-  selector: 'pd-chat-markdown',
-  standalone: true,
-  template: `<div class="pd-chat-md" [innerHTML]="data()"></div>`,
-  styles: [
-    `
-      :host {
-        display: block;
-      }
-      .pd-chat-md p {
-        margin: 0 0 8px;
-      }
-    `,
-  ],
-})
-export class ChatMarkdown {
-  data = input.required<string>();
-}
+import {
+  getTriggerSchema,
+  KNOWN_TRIGGER_SCHEMAS,
+} from '../../models/trigger-schemas';
+import { provideMarkdown } from 'ngx-markdown';
+import {
+  MarkdownComponent,
+  MessagesComponent,
+  type ChatToolMetadata,
+} from '@poc/ui-chat-elements';
 
 @Component({
   selector: 'pd-workflow-suggestion-card',
@@ -81,37 +69,18 @@ export class WorkflowSuggestionCard {
 @Component({
   selector: 'pd-chat-panel',
   standalone: true,
-  imports: [RenderMessageComponent],
+  imports: [MessagesComponent],
+  providers: [provideMarkdown()],
   template: `
     <div class="pd-chat-panel">
-      <div class="pd-chat-messages" #scrollContainer>
-        @for (msg of chat().value(); track $index) {
-          @switch (msg.role) {
-            @case ('user') {
-              <div class="pd-msg pd-msg--user">
-                <div class="pd-bubble">{{ msg.content }}</div>
-              </div>
-            }
-            @case ('assistant') {
-              <div class="pd-msg pd-msg--assistant">
-                @if (msg.content) {
-                  <hb-render-message [message]="msg" />
-                }
-              </div>
-            }
-            @case ('error') {
-              <div class="pd-msg pd-msg--error">
-                {{ msg.content }}
-                <button type="button" (click)="retryMessages()">Retry</button>
-              </div>
-            }
-          }
-        }
-        @if (chat().isLoading()) {
-          <div class="pd-msg pd-msg--assistant">
-            <div class="pd-bubble pd-bubble--loading">Thinking...</div>
-          </div>
-        }
+      <div class="pd-chat-messages">
+        <esp-hb-ai-assistant-chat-messages
+          class="max-h-full overflow-auto"
+          [toolMetadata]="toolMetadata()"
+          [messages]="$any(chat().value())"
+          [messageLoading]="chat().isLoading()"
+          (retry)="retryMessages()"
+        />
       </div>
 
       <div class="pd-chat-input-row">
@@ -141,11 +110,42 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly pdClient = inject(PipedreamClientService);
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
-  private readonly scrollContainer =
-    viewChild.required<ElementRef<HTMLDivElement>>('scrollContainer');
 
   private readonly textarea =
     viewChild<ElementRef<HTMLTextAreaElement>>('inputEl');
+
+  readonly toolMetadata = computed<ChatToolMetadata>(() => ({
+    create_workflow: {
+      i18n: { pending: 'Creating workflow', done: 'Created workflow' },
+    },
+    add_workflow_step: {
+      i18n: { pending: 'Adding step', done: 'Added step' },
+    },
+    configure_step: {
+      i18n: { pending: 'Configuring step', done: 'Configured step' },
+    },
+    set_step_props: {
+      i18n: { pending: 'Setting properties', done: 'Set properties' },
+    },
+    list_app_components: {
+      i18n: { pending: 'Listing components', done: 'Listed components' },
+    },
+    list_custom_triggers: {
+      i18n: { pending: 'Listing triggers', done: 'Listed triggers' },
+    },
+    get_active_workflow: {
+      i18n: { pending: 'Fetching workflow', done: 'Fetched workflow' },
+    },
+    update_workflow_name: {
+      i18n: { pending: 'Renaming workflow', done: 'Renamed workflow' },
+    },
+    remove_workflow_step: {
+      i18n: { pending: 'Removing step', done: 'Removed step' },
+    },
+    test_step: {
+      i18n: { pending: 'Testing step', done: 'Tested step' },
+    },
+  }));
 
   // Chat is a writable signal so we can recreate it when MCP tools change.
   // Pipedream MCP dynamically adds/removes tools based on conversation state
@@ -158,15 +158,6 @@ export class ChatPanelComponent implements AfterViewInit {
   constructor() {
     // Initialize the chat (runs in constructor = injection context is available)
     this.chat = signal(this.initChat());
-
-    // Auto-scroll when messages change
-    effect(() => {
-      this.chat().value();
-      requestAnimationFrame(() => {
-        const el = this.scrollContainer().nativeElement;
-        el.scrollTop = el.scrollHeight;
-      });
-    });
 
     // Watch for MCP tool changes — reset chat with updated tools.
     // Skip the first emission (initial tool load is already captured by initChat).
@@ -270,7 +261,11 @@ export class ChatPanelComponent implements AfterViewInit {
         for (const [path, type] of Object.entries(triggerSchema.paths)) {
           flatSchema[path] = type as StepOutputSchema[string];
         }
-        this.workflowService.setStepOutputSchema(input.workflowId, input.stepId, flatSchema);
+        this.workflowService.setStepOutputSchema(
+          input.workflowId,
+          input.stepId,
+          flatSchema,
+        );
       }
 
       const props = component.configurableProps ?? [];
@@ -279,7 +274,11 @@ export class ChatPanelComponent implements AfterViewInit {
         .map((p: any) => p.app as string);
       const requiredProps = props
         .filter((p: any) => p.type !== 'app' && !p.optional)
-        .map((p: any) => ({ name: p.name, label: p.label ?? p.name, type: p.type }));
+        .map((p: any) => ({
+          name: p.name,
+          label: p.label ?? p.name,
+          type: p.type,
+        }));
 
       return {
         success: true,
@@ -315,8 +314,8 @@ export class ChatPanelComponent implements AfterViewInit {
     name: 'set_step_props',
     description:
       'Set property values on an already-configured workflow step. Call this AFTER ' +
-      'configure_step to fill in the step\'s required and optional properties. ' +
-      'Pass a JSON string in propsJson where keys are property names (from configure_step\'s ' +
+      "configure_step to fill in the step's required and optional properties. " +
+      "Pass a JSON string in propsJson where keys are property names (from configure_step's " +
       'allProperties response) and values are the desired settings. ' +
       'Example propsJson: \'{"text": "Hello world", "channelType": "Public Channel", "conversation": "#general"}\'. ' +
       'You can call this multiple times to update props incrementally.',
@@ -324,22 +323,43 @@ export class ChatPanelComponent implements AfterViewInit {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to set properties on'),
       propsJson: s.string(
-        'A JSON string of property key-value pairs. Keys are property names from configure_step\'s allProperties. ' +
-        'Values must match the property types (string, integer, boolean, etc.).',
+        "A JSON string of property key-value pairs. Keys are property names from configure_step's allProperties. " +
+          'Values must match the property types (string, integer, boolean, etc.).',
       ),
     }),
-    handler: (input): Promise<{ success: boolean; error: string | null; configuredProps: Record<string, unknown> | null }> => {
+    handler: (
+      input,
+    ): Promise<{
+      success: boolean;
+      error: string | null;
+      configuredProps: Record<string, unknown> | null;
+    }> => {
       let props: Record<string, unknown>;
       try {
         props = JSON.parse(input.propsJson);
       } catch {
-        return Promise.resolve({ success: false, error: 'Invalid JSON in propsJson', configuredProps: null });
+        return Promise.resolve({
+          success: false,
+          error: 'Invalid JSON in propsJson',
+          configuredProps: null,
+        });
       }
-      const workflow = this.workflowService.workflows().find((w) => w.id === input.workflowId);
-      if (!workflow) return Promise.resolve({ success: false, error: 'Workflow not found', configuredProps: null });
+      const workflow = this.workflowService
+        .workflows()
+        .find((w) => w.id === input.workflowId);
+      if (!workflow)
+        return Promise.resolve({
+          success: false,
+          error: 'Workflow not found',
+          configuredProps: null,
+        });
       const step = workflow.steps.find((st) => st.id === input.stepId);
       if (!step?.data || step.data.source !== 'pipedream') {
-        return Promise.resolve({ success: false, error: 'Step not configured yet — call configure_step first', configuredProps: null });
+        return Promise.resolve({
+          success: false,
+          error: 'Step not configured yet — call configure_step first',
+          configuredProps: null,
+        });
       }
       const current = step.data as PipedreamStep;
       const merged = { ...current.configuredProps, ...props };
@@ -347,7 +367,11 @@ export class ChatPanelComponent implements AfterViewInit {
         ...current,
         configuredProps: merged,
       });
-      return Promise.resolve({ success: true, error: null, configuredProps: merged });
+      return Promise.resolve({
+        success: true,
+        error: null,
+        configuredProps: merged,
+      });
     },
   });
 
@@ -358,13 +382,18 @@ export class ChatPanelComponent implements AfterViewInit {
       'Use this to discover the correct component keys BEFORE calling configure_step. ' +
       'Returns component name, key, and type for each match.',
     schema: s.object('ListComponentsInput', {
-      appSlug: s.string('The Pipedream app name_slug (e.g. "google_calendar", "slack_v2", "schedule")'),
-      componentType: s.string('Filter by type: "action" or "trigger". Pass empty string to list all.'),
+      appSlug: s.string(
+        'The Pipedream app name_slug (e.g. "google_calendar", "slack_v2", "schedule")',
+      ),
+      componentType: s.string(
+        'Filter by type: "action" or "trigger". Pass empty string to list all.',
+      ),
     }),
     handler: async (input) => {
-      const type = input.componentType === 'action' || input.componentType === 'trigger'
-        ? input.componentType
-        : undefined;
+      const type =
+        input.componentType === 'action' || input.componentType === 'trigger'
+          ? input.componentType
+          : undefined;
       const response = await this.pdClient.listComponents({
         app: input.appSlug,
         componentType: type,
@@ -408,10 +437,20 @@ export class ChatPanelComponent implements AfterViewInit {
             id: step.id,
             type: step.type,
             configured: !!step.data,
-            app: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).app?.name : null,
-            component: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).component?.name : null,
-            componentKey: step.data?.source === 'pipedream' ? (step.data as PipedreamStep).component?.key : null,
-            customTriggerId: step.data?.source === 'custom' ? step.data.customTriggerId : null,
+            app:
+              step.data?.source === 'pipedream'
+                ? (step.data as PipedreamStep).app?.name
+                : null,
+            component:
+              step.data?.source === 'pipedream'
+                ? (step.data as PipedreamStep).component?.name
+                : null,
+            componentKey:
+              step.data?.source === 'pipedream'
+                ? (step.data as PipedreamStep).component?.key
+                : null,
+            customTriggerId:
+              step.data?.source === 'custom' ? step.data.customTriggerId : null,
             tested: step.tested ?? false,
             outputSchema: step.outputSchema ?? null,
           })),
@@ -429,7 +468,9 @@ export class ChatPanelComponent implements AfterViewInit {
       name: s.string('The new name for the workflow'),
     }),
     handler: (input) => {
-      this.workflowService.updateWorkflow(input.workflowId, { name: input.name });
+      this.workflowService.updateWorkflow(input.workflowId, {
+        name: input.name,
+      });
       return Promise.resolve({ success: true, name: input.name });
     },
   });
@@ -499,7 +540,9 @@ ${examples}
 
   // ── Chat lifecycle ──────────────────────────────────────────────────────
 
-  private initChat(messages?: Chat.Message<any, any>[]): UiChatResourceRef<any> {
+  private initChat(
+    messages?: Chat.Message<any, any>[],
+  ): UiChatResourceRef<any> {
     return runInInjectionContext(this.injector, () => {
       return uiChatResource({
         model: 'gpt-4o@2025-01-01-preview',
@@ -692,7 +735,7 @@ ${examples}
           </style_and_output>
         `,
         components: [
-          exposeComponent(ChatMarkdown, {
+          exposeComponent(MarkdownComponent, {
             description: 'Show markdown text to the user',
             input: {
               data: s.streaming.string('The markdown content'),
@@ -709,10 +752,7 @@ ${examples}
             },
           }),
         ],
-        tools: [
-          ...this.mcpService.tools(),
-          ...this.clientTools,
-        ],
+        tools: [...this.mcpService.tools(), ...this.clientTools],
       });
     });
   }

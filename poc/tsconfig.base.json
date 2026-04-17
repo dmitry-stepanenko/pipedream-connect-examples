@@ -22,7 +22,8 @@
       "@poc/feature-manage-connected-accounts": [
         "libs/feature-manage-connected-accounts/src/index.ts"
       ],
-      "@poc/data-access-api": ["libs/data-access-api/src/index.ts"]
+      "@poc/data-access-api": ["libs/data-access-api/src/index.ts"],
+      "@poc/ui-chat-elements": ["libs/ui-chat-elements/src/index.ts"],
     }
   },
   "exclude": ["node_modules", "tmp"]
