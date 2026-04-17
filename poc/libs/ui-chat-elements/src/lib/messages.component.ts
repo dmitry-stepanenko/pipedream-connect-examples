@@ -45,7 +45,7 @@ export interface ChatToolMetadata {
         vertical-align: middle;
         width: var(--dotSize);
         height: var(--dotSize);
-        background: var(--color-primary-500);
+        background: #6366f1;
         border-radius: var(--dotSize);
         animation: loader var(--animationTime) infinite alternate;
         margin: 1rem 0;
@@ -96,7 +96,7 @@ class AiAssistantChatLoadingComponent {}
             [class.hasToolCalls]="message.toolCalls.length > 0"
           >
             <div class="assistant-avatar">
-              <i class="fa-solid fa-user text-base-400"></i>
+              <i class="fa-solid fa-user text-gray-400"></i>
             </div>
             <div class="assistant-tools">
               @for (toolCall of message.toolCalls; track $index) {
@@ -126,7 +126,7 @@ class AiAssistantChatLoadingComponent {}
         }
         @case ('error') {
           <div class="chat-message msg-error">
-            <i class="fa-solid fa-triangle-exclamation text-danger-500"></i>
+            <i class="fa-solid fa-triangle-exclamation text-red-500"></i>
             <span>{{ message.content }}</span>
             @if ($last) {
               <button mat-button (click)="retry.emit()">Retry</button>
@@ -161,7 +161,7 @@ class AiAssistantChatLoadingComponent {}
         padding: 0.5rem 1rem;
         border-radius: 1rem;
         width: 80%;
-        background-color: var(--color-primary-100);
+        background-color: #e0e7ff;
         align-self: flex-end;
         white-space: pre-wrap;
       }
@@ -229,7 +229,7 @@ class AiAssistantChatLoadingComponent {}
         padding: 1rem;
         border-radius: 1rem;
         width: 80%;
-        background-color: var(--color-danger-100);
+        background-color: #fee2e2;
         align-self: flex-start;
         margin-top: 1rem;
         display: flex;

@@ -65,8 +65,8 @@ export class ToolChipComponent {
   readonly backgroundColorClass = computed(() => {
     const t = this.toolCall();
     if (t.status === 'pending') {
-      return 'bg-base-200';
+      return 'bg-gray-200';
     }
-    return t.result.status === 'rejected' ? 'bg-danger-100' : 'bg-success-100';
+    return t.result.status === 'rejected' ? 'bg-red-100' : 'bg-green-100';
   });
 }
