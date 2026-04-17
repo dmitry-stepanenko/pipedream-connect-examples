@@ -18,6 +18,7 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { CosRenderMessageComponent } from './render-message.component';
 import { ToolChipComponent } from './tool-chip.component';
+import { ToolLabelPipe } from './tool-label.pipe';
 
 export interface ChatToolMetadata {
   [toolName: string]: {
@@ -77,6 +78,7 @@ class AiAssistantChatLoadingComponent {}
     CosRenderMessageComponent,
     MatButtonModule,
     ToolChipComponent,
+    ToolLabelPipe,
     AiAssistantChatLoadingComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -103,8 +105,8 @@ class AiAssistantChatLoadingComponent {}
                 @if (toolMetadata()?.[toolCall.name]?.i18n; as toolI18n) {
                   <esp-ai-assistant-tool-chip
                     [toolCall]="toolCall"
-                    [pending]="toolI18n.pending"
-                    [done]="toolI18n.done"
+                    [pending]="toolI18n.pending | toolLabel:toolCall"
+                    [done]="toolI18n.done | toolLabel:toolCall"
                   />
                 } @else {
                   <esp-ai-assistant-tool-chip

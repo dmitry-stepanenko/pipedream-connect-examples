@@ -116,19 +116,31 @@ export class ChatPanelComponent implements AfterViewInit {
 
   readonly toolMetadata = computed<ChatToolMetadata>(() => ({
     create_workflow: {
-      i18n: { pending: 'Creating workflow', done: 'Created workflow' },
+      i18n: {
+        pending: 'Creating workflow: {{ name }}',
+        done: 'Created workflow: {{ name }}',
+      },
     },
     add_workflow_step: {
-      i18n: { pending: 'Adding step', done: 'Added step' },
+      i18n: {
+        pending: 'Adding step: {{ stepName }}',
+        done: 'Added step: {{ stepName }}',
+      },
     },
     configure_step: {
-      i18n: { pending: 'Configuring step', done: 'Configured step' },
+      i18n: {
+        pending: 'Configuring step: {{ appName }}',
+        done: 'Configured step: {{ appName }}',
+      },
     },
     set_step_props: {
       i18n: { pending: 'Setting properties', done: 'Set properties' },
     },
     list_app_components: {
-      i18n: { pending: 'Listing components', done: 'Listed components' },
+      i18n: {
+        pending: 'Listing components: {{ appName }}',
+        done: 'Listed components: {{ appName }}',
+      },
     },
     list_custom_triggers: {
       i18n: { pending: 'Listing triggers', done: 'Listed triggers' },
@@ -137,13 +149,22 @@ export class ChatPanelComponent implements AfterViewInit {
       i18n: { pending: 'Fetching workflow', done: 'Fetched workflow' },
     },
     update_workflow_name: {
-      i18n: { pending: 'Renaming workflow', done: 'Renamed workflow' },
+      i18n: {
+        pending: 'Renaming workflow: {{ name }}',
+        done: 'Renamed workflow: {{ name }}',
+      },
     },
     remove_workflow_step: {
-      i18n: { pending: 'Removing step', done: 'Removed step' },
+      i18n: {
+        pending: 'Removing step: {{ stepName }}',
+        done: 'Removed step: {{ stepName }}',
+      },
     },
     test_step: {
-      i18n: { pending: 'Testing step', done: 'Tested step' },
+      i18n: {
+        pending: 'Testing step: {{ stepName }}',
+        done: 'Tested step: {{ stepName }}',
+      },
     },
   }));
 
@@ -214,9 +235,11 @@ export class ChatPanelComponent implements AfterViewInit {
       'Add a new action step to the specified workflow. Returns the step ID.',
     schema: s.object('AddStepInput', {
       workflowId: s.string('The workflow ID'),
+      stepName: s.string('Human readable name of the step'),
     }),
     handler: async (input) => {
       const step = await this.workflowService.addStep(input.workflowId);
+      await this.workflowService.save(input.workflowId);
       return { stepId: step.id };
     },
   });
@@ -234,6 +257,7 @@ export class ChatPanelComponent implements AfterViewInit {
       appSlug: s.string(
         'The Pipedream app name_slug (e.g. "github", "slack_v2", "schedule")',
       ),
+      appName: s.string('Human readable name for the app'),
       componentKey: s.string(
         'The Pipedream component key (e.g. "github-list-repos", "schedule-custom-interval")',
       ),
@@ -279,6 +303,8 @@ export class ChatPanelComponent implements AfterViewInit {
           label: p.label ?? p.name,
           type: p.type,
         }));
+
+      await this.workflowService.save(input.workflowId);
 
       return {
         success: true,
@@ -327,7 +353,7 @@ export class ChatPanelComponent implements AfterViewInit {
           'Values must match the property types (string, integer, boolean, etc.).',
       ),
     }),
-    handler: (
+    handler: async (
       input,
     ): Promise<{
       success: boolean;
@@ -338,28 +364,28 @@ export class ChatPanelComponent implements AfterViewInit {
       try {
         props = JSON.parse(input.propsJson);
       } catch {
-        return Promise.resolve({
+        return {
           success: false,
           error: 'Invalid JSON in propsJson',
           configuredProps: null,
-        });
+        };
       }
       const workflow = this.workflowService
         .workflows()
         .find((w) => w.id === input.workflowId);
       if (!workflow)
-        return Promise.resolve({
+        return {
           success: false,
           error: 'Workflow not found',
           configuredProps: null,
-        });
+        };
       const step = workflow.steps.find((st) => st.id === input.stepId);
       if (!step?.data || step.data.source !== 'pipedream') {
-        return Promise.resolve({
+        return {
           success: false,
           error: 'Step not configured yet — call configure_step first',
           configuredProps: null,
-        });
+        };
       }
       const current = step.data as PipedreamStep;
       const merged = { ...current.configuredProps, ...props };
@@ -367,11 +393,12 @@ export class ChatPanelComponent implements AfterViewInit {
         ...current,
         configuredProps: merged,
       });
-      return Promise.resolve({
+      await this.workflowService.save(input.workflowId);
+      return {
         success: true,
         error: null,
         configuredProps: merged,
-      });
+      };
     },
   });
 
@@ -385,6 +412,7 @@ export class ChatPanelComponent implements AfterViewInit {
       appSlug: s.string(
         'The Pipedream app name_slug (e.g. "google_calendar", "slack_v2", "schedule")',
       ),
+      appName: s.string('Human readable name for the app'),
       componentType: s.string(
         'Filter by type: "action" or "trigger". Pass empty string to list all.',
       ),
@@ -467,11 +495,12 @@ export class ChatPanelComponent implements AfterViewInit {
       workflowId: s.string('The workflow ID'),
       name: s.string('The new name for the workflow'),
     }),
-    handler: (input) => {
+    handler: async (input) => {
       this.workflowService.updateWorkflow(input.workflowId, {
         name: input.name,
       });
-      return Promise.resolve({ success: true, name: input.name });
+      await this.workflowService.save(input.workflowId);
+      return { success: true, name: input.name };
     },
   });
 
@@ -482,10 +511,12 @@ export class ChatPanelComponent implements AfterViewInit {
     schema: s.object('RemoveStepInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to remove'),
+      stepName: s.string('Human readable name for the step'),
     }),
-    handler: (input) => {
+    handler: async (input) => {
       this.workflowService.removeStep(input.workflowId, input.stepId);
-      return Promise.resolve({ success: true });
+      await this.workflowService.save(input.workflowId);
+      return { success: true };
     },
   });
 
@@ -500,9 +531,15 @@ export class ChatPanelComponent implements AfterViewInit {
     schema: s.object('TestStepInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to test'),
+      stepName: s.string('Human readable name for the step'),
     }),
     handler: async (input) => {
-      return this.workflowService.testStep(input.workflowId, input.stepId);
+      const result = await this.workflowService.testStep(
+        input.workflowId,
+        input.stepId,
+      );
+      await this.workflowService.save(input.workflowId);
+      return result;
     },
   });
 
