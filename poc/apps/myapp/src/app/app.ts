@@ -15,6 +15,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
         <a routerLink="/accounts" routerLinkActive="app-nav__link--active" class="app-nav__link">
           Connected Accounts
         </a>
+        <a routerLink="/triggers" routerLinkActive="app-nav__link--active" class="app-nav__link">
+          Deployed Triggers
+        </a>
       </nav>
       <div class="app-content">
         <router-outlet />

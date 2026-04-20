@@ -127,34 +127,6 @@
         + Add Step
       </button>
 
-      @if (isPublished()) {
-        <div class="pd-deployed-triggers-section">
-          <button
-            type="button"
-            class="pd-btn pd-btn--ghost pd-btn--sm"
-            [disabled]="loadingTriggers()"
-            (click)="loadDeployedTriggers()"
-          >
-            @if (loadingTriggers()) { Loading… } @else { 🔍 Inspect Deployed Triggers }
-          </button>
-          @if (deployedTriggers(); as triggers) {
-            <div class="pd-deployed-triggers-list">
-              @if (triggers.length === 0) {
-                <p class="pd-deployed-triggers-empty">No deployed triggers found.</p>
-              }
-              @for (t of triggers; track $any(t).id) {
-                <div class="pd-deployed-trigger-item">
-                  <code class="pd-deployed-trigger-id">{{ $any(t).id }}</code>
-                  <span class="pd-deployed-trigger-name">{{ $any(t).name ?? $any(t).key }}</span>
-                  <span class="pd-deployed-trigger-status pd-deployed-trigger-status--{{ $any(t).active ? 'active' : 'inactive' }}">
-                    {{ $any(t).active ? 'active' : 'inactive' }}
-                  </span>
-                </div>
-              }
-            </div>
-          }
-        </div>
-      }
     </div>
 
     <!-- Right: tabbed panel (Step Details / AI Chat) -->

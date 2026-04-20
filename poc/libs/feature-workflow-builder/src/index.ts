@@ -19,3 +19,4 @@ export { WorkflowBuilderComponent } from './lib/components/workflow-builder/work
 export { WorkflowStepComponent } from './lib/components/workflow-step/workflow-step';
 export { StepPickerComponent } from './lib/components/step-picker/step-picker';
 export { ChatPanelComponent } from './lib/components/chat-panel/chat-panel';
+export { DeployedTriggersPageComponent } from './lib/components/deployed-triggers-page/deployed-triggers-page';

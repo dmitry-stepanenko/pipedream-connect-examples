@@ -150,6 +150,24 @@ export async function deleteWorkflow(
 // index to maintain. indexCustomTrigger / removeCustomTriggerIndex are gone;
 // saveWorkflow handles the value as part of the normal upsert.
 
+export async function getWorkflowsByDeployedTriggerIds(
+  db: Db,
+  triggerIds: string[],
+): Promise<{ id: string; name: string; deployedTriggerId: string }[]> {
+  if (triggerIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: workflowsTable.id,
+      name: workflowsTable.name,
+      deployedTriggerId: workflowsTable.deployedTriggerId,
+    })
+    .from(workflowsTable)
+    .where(inArray(workflowsTable.deployedTriggerId, triggerIds));
+  return rows
+    .filter((r) => r.deployedTriggerId !== null)
+    .map((r) => ({ id: r.id, name: r.name, deployedTriggerId: r.deployedTriggerId! }));
+}
+
 export async function getWorkflowsByCustomTrigger(
   db: Db,
   customTriggerId: string,

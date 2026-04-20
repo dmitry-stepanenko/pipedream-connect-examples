@@ -279,6 +279,10 @@ export class WorkflowService {
     return this.api.listDeployedTriggers();
   }
 
+  async getDeployedTriggerEvents(triggerId: string): Promise<{ events: unknown[] }> {
+    return this.api.getDeployedTriggerEvents(triggerId);
+  }
+
   async triggerWorkflow(id: string): Promise<{ run: unknown }> {
     return this.api.triggerWorkflow(id);
   }

@@ -137,6 +137,14 @@ export class WorkflowApiService {
     return res.json();
   }
 
+  async getDeployedTriggerEvents(triggerId: string, n = 20): Promise<{ events: unknown[] }> {
+    const res = await fetch(
+      `${this.baseUrl}/deployed-triggers/${encodeURIComponent(triggerId)}/events?externalUserId=${encodeURIComponent(this.userId)}&n=${n}`,
+    );
+    if (!res.ok) throw new Error(`Failed to fetch trigger events: ${res.status}`);
+    return res.json();
+  }
+
   async triggerWorkflow(id: string): Promise<{ run: unknown }> {
     const res = await fetch(`${this.baseUrl}/${id}/trigger`, {
       method: 'POST',

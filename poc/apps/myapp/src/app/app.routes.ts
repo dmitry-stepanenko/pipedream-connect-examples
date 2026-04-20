@@ -14,4 +14,11 @@ export const appRoutes: Route[] = [
         (m) => m.FeatureManageConnectedAccountsComponent,
       ),
   },
+  {
+    path: 'triggers',
+    loadComponent: () =>
+      import('@poc/feature-workflow-builder').then(
+        (m) => m.DeployedTriggersPageComponent,
+      ),
+  },
 ];

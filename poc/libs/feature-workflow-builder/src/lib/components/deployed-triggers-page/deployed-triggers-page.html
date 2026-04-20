@@ -1,0 +1,116 @@
+<div class="pd-triggers-page">
+  <div class="pd-triggers-header">
+    <h2 class="pd-triggers-title">Deployed Triggers</h2>
+    <button
+      type="button"
+      class="pd-btn pd-btn--ghost"
+      [disabled]="triggersResource.isLoading()"
+      (click)="triggersResource.reload()"
+    >
+      @if (triggersResource.isLoading()) { Loading… } @else { Refresh }
+    </button>
+  </div>
+
+  @if (triggersResource.error()) {
+    @if (triggersResource.isLoading()) {
+      <p class="pd-empty">Retrying…</p>
+    } @else {
+      <p class="pd-error">
+        Failed to load triggers.
+        <button type="button" class="pd-btn-link" (click)="triggersResource.reload()">Retry</button>
+      </p>
+    }
+  } @else if (triggersResource.isLoading() && !triggersResource.value()?.length) {
+    <p class="pd-empty">Loading triggers…</p>
+  } @else if (!triggersResource.value()?.length) {
+    <p class="pd-empty">No deployed triggers found.</p>
+  } @else {
+    <div class="pd-triggers-list">
+      @for (trigger of triggersResource.value()!; track trigger.id) {
+        <div class="pd-trigger-card">
+          <div class="pd-trigger-row">
+            <div class="pd-trigger-main">
+              <div class="pd-trigger-identity">
+                <span class="pd-trigger-name">{{ trigger.type }}</span>
+              </div>
+              <div class="pd-trigger-meta">
+                <span class="pd-meta-item">
+                  <span class="pd-meta-label">ID</span>
+                  <code class="pd-meta-value">{{ trigger.id }}</code>
+                </span>
+                @if (trigger.createdAt) {
+                  <span class="pd-meta-item">
+                    <span class="pd-meta-label">Deployed</span>
+                    <span class="pd-meta-value">{{ (trigger.createdAt) * 1000 | date:'mediumDate' }}</span>
+                  </span>
+                }
+                @if (trigger.updatedAt) {
+                  <span class="pd-meta-item">
+                    <span class="pd-meta-label">Updated</span>
+                    <span class="pd-meta-value">{{ (trigger.updatedAt) * 1000 | date:'medium' }}</span>
+                  </span>
+                }
+                @for (entry of extraProps(trigger); track entry[0]) {
+                  <span class="pd-meta-item">
+                    <span class="pd-meta-label">{{ entry[0] }}</span>
+                    <code class="pd-meta-value">{{ entry[1] }}</code>
+                  </span>
+                }
+              </div>
+            </div>
+            <div class="pd-trigger-actions">
+              @if (trigger.workflow) {
+                <button
+                  type="button"
+                  class="pd-btn pd-btn--ghost pd-btn--sm"
+                  (click)="openWorkflow(trigger)"
+                >
+                  Open: {{ trigger.workflow.name }}
+                </button>
+              }
+              <button
+                type="button"
+                class="pd-btn pd-btn--ghost pd-btn--sm"
+                (click)="toggleInvocations(trigger)"
+              >
+                @if (expandedTriggerId() === trigger.id) { Hide Invocations } @else { View Invocations }
+              </button>
+            </div>
+          </div>
+
+          @if (expandedTriggerId() === trigger.id) {
+            <div class="pd-invocations">
+              <div class="pd-invocations-header">
+                <span class="pd-invocations-title">Recent Invocations</span>
+                <button
+                  type="button"
+                  class="pd-btn-link"
+                  [disabled]="eventsLoading() === trigger.id"
+                  (click)="refreshEvents(trigger)"
+                >
+                  @if (eventsLoading() === trigger.id) { Loading… } @else { Refresh }
+                </button>
+              </div>
+
+              @if (eventsError()[trigger.id]) {
+                <p class="pd-error">{{ eventsError()[trigger.id] }}</p>
+              } @else if (eventsLoading() === trigger.id && !eventsMap()[trigger.id]) {
+                <p class="pd-empty">Loading invocations…</p>
+              } @else if (!eventsMap()[trigger.id]?.length) {
+                <p class="pd-empty">No invocations found.</p>
+              } @else {
+                <div class="pd-events-list">
+                  @for (event of eventsMap()[trigger.id]; track $index) {
+                    <div class="pd-event-item">
+                      <pre class="pd-event-json">{{ event | json }}</pre>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

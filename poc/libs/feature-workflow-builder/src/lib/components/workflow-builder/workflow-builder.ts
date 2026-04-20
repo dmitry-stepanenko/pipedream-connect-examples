@@ -49,9 +49,6 @@ export class WorkflowBuilderComponent {
   protected readonly testEventError = signal<string | null>(null);
   protected readonly testEventJson = signal<string | null>(null);
 
-  protected readonly loadingTriggers = signal(false);
-  protected readonly deployedTriggers = signal<unknown[] | null>(null);
-
   protected readonly loadingTriggerEvents = signal(false);
   protected readonly triggerEvents = signal<unknown[] | null>(null);
   protected readonly triggerEventsError = signal<string | null>(null);
@@ -291,17 +288,6 @@ export class WorkflowBuilderComponent {
       this.executionRunsError.set(err instanceof Error ? err.message : String(err));
     } finally {
       this.loadingRuns.set(false);
-    }
-  }
-
-  protected async loadDeployedTriggers() {
-    this.loadingTriggers.set(true);
-    this.deployedTriggers.set(null);
-    try {
-      const res = await this.workflowService.listDeployedTriggers();
-      this.deployedTriggers.set(res.triggers);
-    } finally {
-      this.loadingTriggers.set(false);
     }
   }
 
