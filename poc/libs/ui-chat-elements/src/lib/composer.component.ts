@@ -15,37 +15,44 @@ import { MatIconModule } from '@angular/material/icon';
 @Component({
   selector: 'esp-ai-assistant-composer',
   template: `
-    <mat-form-field>
+    <mat-form-field class="w-full">
       <textarea
         matInput
         [formControl]="form.controls.message"
         [placeholder]="placeholder()"
         (keydown.enter)="onHitEnter($event)"
       ></textarea>
-      @if (!loading()) {
-        <button
-          mat-icon-button
-          matSuffix
-          aria-label="Send"
-          [disabled]="form.invalid || !form.controls.message.value"
-          (click)="onSendMessage()"
-        >
-          <mat-icon fontIcon="send"></mat-icon>
-        </button>
-      } @else {
-        <button
-          mat-icon-button
-          matSuffix
-          aria-label="Stop"
-          type="button"
-          (click)="stopChat.emit()"
-        >
-          <mat-icon fontIcon="stop"></mat-icon>
-        </button>
-      }
     </mat-form-field>
+    @if (!loading()) {
+      <button
+        mat-button
+        aria-label="Send"
+        [disabled]="form.invalid || !form.controls.message.value"
+        (click)="onSendMessage()"
+      >
+        Send
+      </button>
+    } @else {
+      <button
+        mat-button
+        aria-label="Stop"
+        type="button"
+        (click)="stopChat.emit()"
+      >
+        Stop
+      </button>
+    }
   `,
-  imports: [MatButtonModule, MatFormFieldModule, MatInputModule, MatIconModule, ReactiveFormsModule],
+  host: {
+    class: 'flex gap-2 items-center',
+  },
+  imports: [
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatIconModule,
+    ReactiveFormsModule,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ComposerComponent {
@@ -58,9 +65,14 @@ export class ComposerComponent {
   readonly form = this._createForm();
 
   private _createForm() {
-    return this._fb.group({
+    const f = this._fb.group({
       message: this._fb.nonNullable.control(''),
     });
+    f.controls.message.setValue(
+      // `I need a workflow that on schedule sends "hello" to my slack "General" channel at 9 a.m. every Monday`
+      `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them with chat gpt and sends a short report as a slack message`,
+    );
+    return f;
   }
 
   onHitEnter($event: Event) {

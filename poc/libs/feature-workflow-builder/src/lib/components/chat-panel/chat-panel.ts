@@ -30,6 +30,7 @@ import {
 } from '../../models/trigger-schemas';
 import { provideMarkdown } from 'ngx-markdown';
 import {
+  ComposerComponent,
   MarkdownComponent,
   MessagesComponent,
   type ChatToolMetadata,
@@ -76,7 +77,7 @@ export class WorkflowSuggestionCard {
 @Component({
   selector: 'pd-chat-panel',
   standalone: true,
-  imports: [MessagesComponent],
+  imports: [MessagesComponent, ComposerComponent],
   providers: [
     provideMarkdown(),
     {
@@ -100,21 +101,12 @@ export class WorkflowSuggestionCard {
       </div>
 
       <div class="pd-chat-input-row">
-        <textarea
-          #inputEl
-          class="pd-chat-input"
-          placeholder="Describe a workflow..."
-          rows="3"
-          (keydown.enter)="onEnter($event, inputEl)"
-        ></textarea>
-        <button
-          type="button"
-          class="pd-btn pd-btn--send"
-          [disabled]="chat().isLoading()"
-          (click)="onSend(inputEl)"
-        >
-          Send
-        </button>
+        <esp-ai-assistant-composer
+          class="w-full"
+          [loading]="chat().isLoading()"
+          (sendMessage)="sendMessage($event)"
+          (stopChat)="stopChat()"
+        />
       </div>
     </div>
   `,
@@ -127,9 +119,6 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
   private readonly completionService = inject(AiStructuredCompletionService);
-
-  private readonly textarea =
-    viewChild<ElementRef<HTMLTextAreaElement>>('inputEl');
 
   readonly toolMetadata = computed<ChatToolMetadata>(() => ({
     create_workflow: {
@@ -746,24 +735,36 @@ ${examples}
   private readonly reviewWorkflowTool = createTool({
     name: 'review_workflow',
     description:
-      'Spawn a sub-agent to critically review the current workflow against the user\'s stated intent. ' +
+      "Spawn a sub-agent to critically review the current workflow against the user's stated intent. " +
       'Call this after the workflow is fully configured to catch problems before the user runs it: ' +
       'missing context that would cause a step to produce wrong or empty results, props that are ' +
       'too generic or ambiguous, mismatched data flowing between steps, steps that will likely fail ' +
-      'due to underspecified inputs, or anything that doesn\'t match what the user asked for. ' +
+      "due to underspecified inputs, or anything that doesn't match what the user asked for. " +
       'Always call this before presenting the workflow as complete.',
     schema: s.object('ReviewWorkflowInput', {
       userIntent: s.string(
-        'The user\'s original goal for this workflow in their own words — what they want it to do and why',
+        "The user's original goal for this workflow in their own words — what they want it to do and why",
       ),
     }),
-    handler: async (input): Promise<{
+    handler: async (
+      input,
+    ): Promise<{
       approved: boolean;
       summary: string;
-      issues: { step: string; severity: string; description: string; fix: string }[];
+      issues: {
+        step: string;
+        severity: string;
+        description: string;
+        fix: string;
+      }[];
     }> => {
       const workflow = this.workflowService.activeWorkflow();
-      if (!workflow) return { approved: false, summary: 'No active workflow found.', issues: [] };
+      if (!workflow)
+        return {
+          approved: false,
+          summary: 'No active workflow found.',
+          issues: [],
+        };
 
       return this.completionService.complete({
         debugName: 'workflow-review',
@@ -1083,14 +1084,14 @@ Respond with a structured review.`,
     resend?: boolean;
   }) {
     const current = this.chat();
-    if (current) this.stopChat(current);
+    if (current) this._stopChatInternal(current);
     this.chat.set(this.initChat(options?.messages));
     if (options?.resend) {
       this.chat().resendMessages();
     }
   }
 
-  private async stopChat(chat: UiChatResourceRef<any>) {
+  private async _stopChatInternal(chat: UiChatResourceRef<any>) {
     // Retry stop() — hashbrown may throw if it's mid-generation
     for (let attempt = 0; attempt < 200; attempt++) {
       try {
@@ -1106,8 +1107,36 @@ Respond with a structured review.`,
 
   ngAfterViewInit() {
     this.mcpService.connect();
-    // this.textarea()!.nativeElement.value = `I need a workflow that on schedule sends "hello" to my slack "General" channel at 9 a.m. every Monday`;
-    this.textarea()!.nativeElement.value = `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them with chat gpt and sends a short report as a slack message`;
+  }
+
+  stopChat() {
+    const chat = this.chat();
+
+    if (!chat) return;
+
+    try {
+      chat.stop();
+
+      /** If stop doesn't throw, it means we have pending messages */
+
+      const messages = chat.value();
+
+      const lastUserIndex = messages.map((m) => m.role).lastIndexOf('user');
+
+      // Keep only messages up to the last user message
+      const trimmedMessages = messages.slice(0, lastUserIndex + 1);
+
+      this.resetChat({
+        messages: [
+          ...trimmedMessages,
+
+          /**
+           * We need a fake message otherwise the agent will still take the user messsage into consideration.
+           */
+          { role: 'assistant', content: '', toolCalls: [] },
+        ],
+      });
+    } catch {}
   }
 
   sendMessage(message: string) {
@@ -1116,19 +1145,5 @@ Respond with a structured review.`,
 
   retryMessages() {
     this.chat().resendMessages();
-  }
-
-  protected onEnter(event: Event, textarea: HTMLTextAreaElement) {
-    const ke = event as KeyboardEvent;
-    if (ke.shiftKey) return;
-    ke.preventDefault();
-    this.onSend(textarea);
-  }
-
-  protected onSend(textarea: HTMLTextAreaElement) {
-    const value = textarea.value.trim();
-    if (!value || this.chat().isLoading()) return;
-    this.sendMessage(value);
-    textarea.value = '';
   }
 }
