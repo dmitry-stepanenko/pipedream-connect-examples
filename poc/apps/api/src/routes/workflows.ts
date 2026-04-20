@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { ENV_VARS } from '../env-vars';
-import type { Workflow } from '../models/workflow.model';
+import type { Workflow, PipedreamStep } from '../models/workflow.model';
 import {
   listWorkflows,
   getWorkflow,
@@ -10,10 +10,12 @@ import {
 import {
   publishWorkflow,
   unpublishWorkflow,
+  updateDeployedTrigger,
   executeWorkflow,
   getTestTriggerEvent,
   testStep,
 } from '../services/workflow-engine';
+import { isEqual, omit } from 'lodash-es';
 import {
   listExecutionRuns,
   getExecutionRun,
@@ -113,7 +115,7 @@ workflows.put('/:id', async (c) => {
   }
 
   const db = createDb(c.env.DB);
-  const workflow = await getWorkflow(db, c.req.param('id'));
+  let workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -121,9 +123,30 @@ workflows.put('/:id', async (c) => {
   if (updates.name !== undefined) workflow.name = updates.name;
   if (updates.description !== undefined)
     workflow.description = updates.description;
-  if (updates.steps !== undefined) workflow.steps = updates.steps;
-  workflow.updatedAt = new Date().toISOString();
 
+  if (updates.steps !== undefined) {
+    const oldTrigger = workflow.steps[0]?.data;
+    const newTrigger = updates.steps[0]?.data;
+    const triggerChanged = !isEqual(oldTrigger, newTrigger);
+
+    if (workflow.status === 'published' && triggerChanged) {
+      const pd = createPipedreamClient(c.env);
+      const oldPd = oldTrigger?.source === 'pipedream' ? (oldTrigger as PipedreamStep) : null;
+      const newPd = newTrigger?.source === 'pipedream' ? (newTrigger as PipedreamStep) : null;
+      const onlyPropsChanged =
+        oldPd && newPd && isEqual(omit(oldPd, 'configuredProps'), omit(newPd, 'configuredProps'));
+
+      if (onlyPropsChanged) {
+        await updateDeployedTrigger(pd, db, workflow.id, externalUserId, newPd);
+      } else {
+        workflow = await unpublishWorkflow(pd, db, workflow.id, externalUserId);
+      }
+    }
+
+    workflow.steps = updates.steps;
+  }
+
+  workflow.updatedAt = new Date().toISOString();
   await saveWorkflow(db, workflow);
   return c.json({ workflow });
 });

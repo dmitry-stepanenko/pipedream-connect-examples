@@ -126,6 +126,33 @@ export async function publishWorkflow(
   return workflow;
 }
 
+export async function updateDeployedTrigger(
+  pd: PipedreamClient,
+  db: Db,
+  workflowId: string,
+  externalUserId: string,
+  newTriggerData: PipedreamStep,
+): Promise<Workflow> {
+  const workflow = await getWorkflow(db, workflowId);
+  if (!workflow) throw new Error('Workflow not found');
+  if (workflow.externalUserId !== externalUserId) throw new Error('Forbidden');
+  if (!workflow.deployedTriggerId) throw new Error('No deployed trigger to update');
+
+  const configuredProps = normalizeAppProps(
+    newTriggerData.configuredProps as Record<string, unknown>,
+    newTriggerData.component.configurableProps,
+  );
+
+  await pd.deployedTriggers.update(workflow.deployedTriggerId, {
+    externalUserId,
+    configuredProps,
+  });
+
+  workflow.updatedAt = new Date().toISOString();
+  await saveWorkflow(db, workflow);
+  return workflow;
+}
+
 export async function unpublishWorkflow(
   pd: PipedreamClient,
   db: Db,

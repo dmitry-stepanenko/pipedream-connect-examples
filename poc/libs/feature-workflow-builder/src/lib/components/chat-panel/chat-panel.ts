@@ -189,6 +189,12 @@ export class ChatPanelComponent implements AfterViewInit {
         done: 'Reviewed workflow',
       },
     },
+    get_prop_options: {
+      i18n: {
+        pending: 'Fetching options for {{ stepName }}…',
+        done: 'Fetched options for {{ stepName }}',
+      },
+    },
   }));
 
   // Chat is a writable signal so we can recreate it when MCP tools change.
@@ -680,6 +686,7 @@ export class ChatPanelComponent implements AfterViewInit {
     schema: s.object('GetPropOptionsInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID'),
+      stepName: s.string('The human-readable step name shown in the UI'),
       propName: s.string('The property name to fetch options for'),
     }),
     handler: async (
