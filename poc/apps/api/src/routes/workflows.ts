@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { ENV_VARS } from '../env-vars';
-import type { Workflow, PipedreamStep } from '../models/workflow.model';
+import type { Workflow } from '../models/workflow.model';
 import {
   listWorkflows,
   getWorkflow,
@@ -11,12 +11,11 @@ import {
 import {
   publishWorkflow,
   unpublishWorkflow,
-  updateDeployedTrigger,
   executeWorkflow,
   getTestTriggerEvent,
   testStep,
 } from '../services/workflow-engine';
-import { isEqual, omit } from 'lodash-es';
+import { isEqual } from 'lodash-es';
 import {
   listExecutionRuns,
   getExecutionRun,
@@ -171,16 +170,7 @@ workflows.put('/:id', async (c) => {
 
     if (workflow.status === 'published' && triggerChanged) {
       const pd = createPipedreamClient(c.env);
-      const oldPd = oldTrigger?.source === 'pipedream' ? (oldTrigger as PipedreamStep) : null;
-      const newPd = newTrigger?.source === 'pipedream' ? (newTrigger as PipedreamStep) : null;
-      const onlyPropsChanged =
-        oldPd && newPd && isEqual(omit(oldPd, 'configuredProps'), omit(newPd, 'configuredProps'));
-
-      if (onlyPropsChanged) {
-        await updateDeployedTrigger(pd, db, workflow.id, externalUserId, newPd);
-      } else {
-        workflow = await unpublishWorkflow(pd, db, workflow.id, externalUserId);
-      }
+      workflow = await unpublishWorkflow(pd, db, workflow.id, externalUserId);
     }
 
     workflow.steps = updates.steps;

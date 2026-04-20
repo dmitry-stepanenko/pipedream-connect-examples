@@ -304,7 +304,8 @@ export class WorkflowService {
   async save(workflowId: string): Promise<void> {
     const workflow = this._workflows().find((w) => w.id === workflowId);
     if (workflow) {
-      await this.api.saveWorkflow(workflow);
+      const updated = await this.api.saveWorkflow(workflow);
+      this._workflows.update((list) => list.map((w) => (w.id === workflowId ? updated : w)));
       this._dirty.set(false);
     }
   }
