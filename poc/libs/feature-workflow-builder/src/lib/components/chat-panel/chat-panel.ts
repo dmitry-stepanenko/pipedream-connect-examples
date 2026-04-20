@@ -102,7 +102,7 @@ export class WorkflowSuggestionCard {
           #inputEl
           class="pd-chat-input"
           placeholder="Describe a workflow..."
-          rows="1"
+          rows="3"
           (keydown.enter)="onEnter($event, inputEl)"
         ></textarea>
         <button
@@ -978,8 +978,8 @@ ${examples}
 
   ngAfterViewInit() {
     this.mcpService.connect();
-    this.textarea()!.nativeElement.value = `I need a workflow that on schedule sends "hello" to my slack "General" channel at 9 a.m. every Monday`;
-    // this.textarea()!.nativeElement.value = `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them and sends a short report as a slack message`;
+    // this.textarea()!.nativeElement.value = `I need a workflow that on schedule sends "hello" to my slack "General" channel at 9 a.m. every Monday`;
+    this.textarea()!.nativeElement.value = `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them with chat gpt and sends a short report as a slack message`;
   }
 
   sendMessage(message: string) {

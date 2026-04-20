@@ -44,12 +44,19 @@ export function resolveInterpolations(
   if (typeof value === 'string') {
     const singleMatch = value.match(/^\{\{([^}]+)\}\}$/);
     if (singleMatch) {
-      const resolved = getAtPath(context, singleMatch[1].trim().split('.'));
-      return resolved !== undefined ? resolved : value;
+      const path = singleMatch[1].trim();
+      const resolved = getAtPath(context, path.split('.'));
+      if (resolved === undefined) {
+        throw new Error(`Unresolved interpolation: {{${path}}} — path does not exist in the execution context`);
+      }
+      return resolved;
     }
-    return value.replace(/\{\{([^}]+)\}\}/g, (match, path: string) => {
-      const resolved = getAtPath(context, path.trim().split('.'));
-      if (resolved === undefined) return match;
+    return value.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
+      const trimmed = path.trim();
+      const resolved = getAtPath(context, trimmed.split('.'));
+      if (resolved === undefined) {
+        throw new Error(`Unresolved interpolation: {{${trimmed}}} — path does not exist in the execution context`);
+      }
       return typeof resolved === 'string' ? resolved : JSON.stringify(resolved);
     });
   }

@@ -132,12 +132,22 @@ describe('resolveInterpolations', () => {
       );
     });
 
-    it('leaves unresolvable expressions unchanged', () => {
-      const result = resolveInterpolations(
-        '{{steps.missing.step.value}}',
-        context,
-      );
-      expect(result).toBe('{{steps.missing.step.value}}');
+    it('throws for an unresolvable single expression', () => {
+      expect(() =>
+        resolveInterpolations('{{steps.missing.step.value}}', context),
+      ).toThrow('Unresolved interpolation: {{steps.missing.step.value}}');
+    });
+
+    it('throws for an unresolvable expression embedded in a larger string', () => {
+      expect(() =>
+        resolveInterpolations('prefix {{steps.missing.step.value}} suffix', context),
+      ).toThrow('Unresolved interpolation: {{steps.missing.step.value}}');
+    });
+
+    it('error message includes the unresolved path', () => {
+      expect(() =>
+        resolveInterpolations('{{steps.google_calendar_list_events.$return_value.event_text}}', context),
+      ).toThrow('path does not exist in the execution context');
     });
 
     it('handles multiple expressions in one string', () => {
@@ -425,19 +435,17 @@ describe('executeWorkflow', () => {
     expect(calendarCall.configuredProps.timeMax).toBe('2026-04-14T23:59:59Z');
   });
 
-  it('leaves trigger expressions unresolved when triggerPayload is empty', async () => {
-    mockActionsRun.mockResolvedValueOnce({ ret: [], exports: {} });
+  it('fails the step when trigger interpolations cannot be resolved (empty payload)', async () => {
+    const run = await executeWorkflow(mockPd, mockKv, workflow, {});
 
-    await executeWorkflow(mockPd, mockKv, workflow, {});
-
-    const calendarCall = mockActionsRun.mock.calls[0][0];
-    // Template strings should pass through unchanged rather than become undefined
-    expect(calendarCall.configuredProps.timeMin).toBe(
-      '{{steps.trigger.event.timezone_configured.iso8601.date}}T00:00:00Z',
-    );
+    expect(run.status).toBe('error');
+    expect(run.steps).toHaveLength(1);
+    expect(run.steps[0].status).toBe('error');
+    expect(run.steps[0].error).toMatch('Unresolved interpolation');
+    expect(mockActionsRun).not.toHaveBeenCalled();
   });
 
-  it('leaves unresolvable expressions unchanged', async () => {
+  it('fails the step when a prop references a non-existent path', async () => {
     const workflowWithBadRef: Workflow = {
       ...workflow,
       steps: [
@@ -455,13 +463,11 @@ describe('executeWorkflow', () => {
       ],
     };
 
-    mockActionsRun.mockResolvedValueOnce({ ret: [], exports: {} });
+    const run = await executeWorkflow(mockPd, mockKv, workflowWithBadRef, triggerPayload);
 
-    await executeWorkflow(mockPd, mockKv, workflowWithBadRef, triggerPayload);
-
-    const calendarCall = mockActionsRun.mock.calls[0][0];
-    expect(calendarCall.configuredProps.timeMin).toBe(
-      '{{steps.nonexistent.field}}T00:00:00Z',
-    );
+    expect(run.status).toBe('error');
+    expect(run.steps[0].status).toBe('error');
+    expect(run.steps[0].error).toMatch('Unresolved interpolation: {{steps.nonexistent.field}}');
+    expect(mockActionsRun).not.toHaveBeenCalled();
   });
 });
