@@ -22,6 +22,7 @@ import {
 import { type Chat, prompt, s } from '@hashbrownai/core';
 import { PipedreamMcpService, WorkflowService } from '@poc/data-access-api';
 import { PipedreamClientService, CUSTOM_TRIGGERS } from '@poc/connect-angular';
+import { AiStructuredCompletionService } from '@poc/data-access-structured-completion';
 import type { PipedreamStep, StepOutputSchema } from '@poc/data-access-api';
 import {
   getTriggerSchema,
@@ -125,6 +126,7 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly pdClient = inject(PipedreamClientService);
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
+  private readonly completionService = inject(AiStructuredCompletionService);
 
   private readonly textarea =
     viewChild<ElementRef<HTMLTextAreaElement>>('inputEl');
@@ -179,6 +181,12 @@ export class ChatPanelComponent implements AfterViewInit {
       i18n: {
         pending: 'Testing step: {{ stepName }}',
         done: 'Tested step: {{ stepName }}',
+      },
+    },
+    review_workflow: {
+      i18n: {
+        pending: 'Reviewing workflow…',
+        done: 'Reviewed workflow',
       },
     },
   }));
@@ -728,6 +736,76 @@ ${examples}
     }).join('\n');
   }
 
+  private readonly reviewWorkflowTool = createTool({
+    name: 'review_workflow',
+    description:
+      'Spawn a sub-agent to critically review the current workflow against the user\'s stated intent. ' +
+      'Call this after the workflow is fully configured to catch problems before the user runs it: ' +
+      'missing context that would cause a step to produce wrong or empty results, props that are ' +
+      'too generic or ambiguous, mismatched data flowing between steps, steps that will likely fail ' +
+      'due to underspecified inputs, or anything that doesn\'t match what the user asked for. ' +
+      'Always call this before presenting the workflow as complete.',
+    schema: s.object('ReviewWorkflowInput', {
+      userIntent: s.string(
+        'The user\'s original goal for this workflow in their own words — what they want it to do and why',
+      ),
+    }),
+    handler: async (input): Promise<{
+      approved: boolean;
+      summary: string;
+      issues: { step: string; severity: string; description: string; fix: string }[];
+    }> => {
+      const workflow = this.workflowService.activeWorkflow();
+      if (!workflow) return { approved: false, summary: 'No active workflow found.', issues: [] };
+
+      return this.completionService.complete({
+        debugName: 'workflow-review',
+        system: `You are a workflow quality reviewer. The user built an automation workflow and you must
+review it critically against their stated intent.
+
+Look for concrete problems that would cause the workflow to fail or produce wrong results:
+- Props with values that are too vague, placeholder-like, or clearly wrong for the use case
+- Required context missing from a step that would make its output empty or incorrect
+  (e.g. a search step with no filters when the user wanted specific results)
+- Data passed between steps that doesn't match — wrong field, wrong format, wrong units
+- A step's configured values that contradict the user's intent
+- Steps that are functionally incomplete even if technically configured
+
+Use outputSnapshot values (actual test run results) where available — they reveal whether
+data flowing between steps is correct, whether filters returned meaningful results, and
+whether referenced fields actually exist in the output.
+
+Do NOT flag things that are genuinely optional or stylistic preferences.
+Be specific: name the step, the prop, and exactly what's wrong and what to do instead.
+
+Respond with a structured review.`,
+        input: {
+          userIntent: input.userIntent,
+          workflow,
+        },
+        schema: s.object('WorkflowReview', {
+          approved: s.boolean(
+            'True only if the workflow looks correct and complete for the stated intent',
+          ),
+          summary: s.string('One or two sentence overall assessment'),
+          issues: s.array(
+            'Specific problems found — empty if approved',
+            s.object('Issue', {
+              step: s.string('Step name or "workflow" for overall issues'),
+              severity: s.anyOf([
+                s.string('"error" — will fail or produce wrong results'),
+                s.string('"warning" — likely to produce poor results'),
+                s.string('"suggestion" — could be improved'),
+              ]),
+              description: s.string('What is wrong and why it matters'),
+              fix: s.string('Concrete action to resolve it'),
+            }),
+          ),
+        }),
+      });
+    },
+  });
+
   private readonly clientTools = [
     this.getActiveWorkflowTool,
     this.createWorkflowTool,
@@ -740,6 +818,7 @@ ${examples}
     this.removeStepTool,
     this.updateWorkflowNameTool,
     this.listCustomTriggersTool,
+    this.reviewWorkflowTool,
   ];
 
   // ── Chat lifecycle ──────────────────────────────────────────────────────
@@ -781,6 +860,7 @@ ${examples}
               - remove_workflow_step — remove a step from a workflow
               - update_workflow_name — rename a workflow
               - list_custom_triggers — list internal event triggers
+              - review_workflow — run a sub-agent quality review before presenting the workflow as complete
             </workflow_tools>
 
             <mcp_tools>
@@ -900,7 +980,8 @@ ${examples}
               8. Use update_workflow_name to give it a descriptive name.
               9. Check list_custom_triggers for internal event triggers.
               10. After building, list steps that require account connections.
-              11. Show a summary using the workflow-suggestion-card component.
+              11. Call review_workflow with the user's original intent to catch any issues before finishing.
+              12. Show a summary using the workflow-suggestion-card component.
             </building_sequence>
           </workflow_building>
 

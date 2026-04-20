@@ -402,8 +402,9 @@ export async function testStep(
 
     const configuredProps = normalizeAppProps(resolvedProps, pdStep.component.configurableProps);
 
-    console.log(JSON.stringify({ testStep: componentKey, configuredProps }, null, 2));
-    const result = await pd.actions.run({ id: componentKey, externalUserId: workflow.externalUserId, configuredProps });
+    const payload = { id: componentKey, externalUserId: workflow.externalUserId, configuredProps };
+    console.log(JSON.stringify({ testStep: componentKey, payload }, null, 2));
+    const result = await pd.actions.run(payload);
     console.log(JSON.stringify({ testStep: componentKey, result }, null, 2));
 
     const typedResult = result as {
