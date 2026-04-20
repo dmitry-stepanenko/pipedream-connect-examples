@@ -44,12 +44,6 @@
                     <span class="pd-meta-value">{{ trigger.createdAt * 1000 | date:'mediumDate' }}</span>
                   </span>
                 }
-                @if (trigger.updatedAt) {
-                  <span class="pd-meta-item">
-                    <span class="pd-meta-label">Updated</span>
-                    <span class="pd-meta-value">{{ trigger.updatedAt * 1000 | date:'medium' }}</span>
-                  </span>
-                }
                 @for (entry of extraProps(trigger); track entry[0]) {
                   <span class="pd-meta-item">
                     <span class="pd-meta-label">{{ entry[0] }}</span>
@@ -73,118 +67,96 @@
                 class="pd-btn pd-btn--ghost pd-btn--sm"
                 (click)="toggleExpanded(trigger)"
               >
-                @if (expandedTriggerId() === trigger.id) { Hide Details } @else { View Details }
+                @if (expandedTriggerId() === trigger.id) { Hide Runs } @else { View Runs }
               </button>
             </div>
           </div>
 
           @if (expandedTriggerId() === trigger.id) {
             <div class="pd-details-panel">
-              <mat-tab-group animationDuration="0" (selectedTabChange)="$event.index === 1 && loadRuns(trigger)">
-                <mat-tab label="Events">
-                  <div class="pd-tab-content">
-                    <div class="pd-tab-content-header">
+              <div class="pd-runs-header">
+                <button
+                  type="button"
+                  class="pd-btn-link"
+                  [disabled]="runsLoading() === trigger.id"
+                  (click)="loadRuns(trigger)"
+                >
+                  @if (runsLoading() === trigger.id) { Loading… } @else { Refresh }
+                </button>
+              </div>
+
+              @if (runsError()[trigger.id]) {
+                <p class="pd-error pd-error--padded">{{ runsError()[trigger.id] }}</p>
+              } @else if (!trigger.workflow) {
+                <p class="pd-empty pd-empty--padded">No associated workflow.</p>
+              } @else if (runsLoading() === trigger.id && !runsMap()[trigger.workflow.id]) {
+                <p class="pd-empty pd-empty--padded">Loading runs…</p>
+              } @else if (!runsMap()[trigger.workflow.id]?.length) {
+                <p class="pd-empty pd-empty--padded">No runs yet.</p>
+              } @else {
+                <div class="pd-runs-list">
+                  @for (run of runsMap()[trigger.workflow.id]; track run.id) {
+                    <div class="pd-run-card">
                       <button
                         type="button"
-                        class="pd-btn-link"
-                        [disabled]="eventsLoading() === trigger.id"
-                        (click)="loadEvents(trigger)"
+                        class="pd-run-summary"
+                        (click)="toggleRun(run.id)"
                       >
-                        @if (eventsLoading() === trigger.id) { Loading… } @else { Refresh }
+                        <span class="pd-run-status pd-run-status--{{ run.status }}">{{ run.status }}</span>
+                        <span class="pd-run-ts">{{ run.startedAt | date:'medium' }}</span>
+                        <span class="pd-chevron">{{ expandedRunId() === run.id ? '▾' : '▸' }}</span>
                       </button>
-                    </div>
-                    @if (eventsError()[trigger.id]) {
-                      <p class="pd-error">{{ eventsError()[trigger.id] }}</p>
-                    } @else if (eventsLoading() === trigger.id && !eventsMap()[trigger.id]) {
-                      <p class="pd-empty">Loading events…</p>
-                    } @else if (!eventsMap()[trigger.id]?.length) {
-                      <p class="pd-empty">No events found.</p>
-                    } @else {
-                      <div class="pd-items-list">
-                        @for (event of eventsMap()[trigger.id]; track $index) {
-                          <div class="pd-item pd-event-item">
-                            <button
-                              type="button"
-                              class="pd-event-summary"
-                              (click)="toggleEventItem(trigger.id, $index)"
-                            >
-                              @if (event.id) {
-                                <code class="pd-event-id">{{ event.id }}</code>
-                              }
-                              @if (event.ts) {
-                                <span class="pd-event-ts">{{ event.ts * 1000 | date:'medium' }}</span>
-                              } @else {
-                                <span class="pd-event-ts">Event {{ $index + 1 }}</span>
-                              }
-                              <span class="pd-chevron">{{ isEventExpanded(trigger.id, $index) ? '▾' : '▸' }}</span>
-                            </button>
-                            @if (isEventExpanded(trigger.id, $index)) {
-                              <pre class="pd-item-json">{{ event | json }}</pre>
-                            }
-                          </div>
-                        }
-                      </div>
-                    }
-                  </div>
-                </mat-tab>
 
-                @if (trigger.workflow) {
-                  <mat-tab label="Runs">
-                    <div class="pd-tab-content">
-                      <div class="pd-tab-content-header">
-                        <button
-                          type="button"
-                          class="pd-btn-link"
-                          [disabled]="runsLoading() === trigger.id"
-                          (click)="loadRuns(trigger)"
-                        >
-                          @if (runsLoading() === trigger.id) { Loading… } @else { Refresh }
-                        </button>
-                      </div>
-                      @if (runsError()[trigger.id]) {
-                        <p class="pd-error">{{ runsError()[trigger.id] }}</p>
-                      } @else if (runsLoading() === trigger.id && !runsMap()[trigger.workflow.id]) {
-                        <p class="pd-empty">Loading runs…</p>
-                      } @else if (!runsMap()[trigger.workflow.id]?.length) {
-                        <p class="pd-empty">No runs yet.</p>
-                      } @else {
-                        <div class="pd-items-list">
-                          @for (run of runsMap()[trigger.workflow.id]; track run.id) {
-                            <div class="pd-item pd-run-item">
-                              <button
-                                type="button"
-                                class="pd-run-summary"
-                                (click)="toggleRun(run.id)"
-                              >
-                                <span class="pd-run-status pd-run-status--{{ run.status }}">{{ run.status }}</span>
-                                <span class="pd-run-source">{{ run.triggerSource }}</span>
-                                <span class="pd-run-ts">{{ run.startedAt | date:'medium' }}</span>
-                                <span class="pd-chevron">{{ expandedRunId() === run.id ? '▾' : '▸' }}</span>
-                              </button>
-                              @if (expandedRunId() === run.id) {
-                                <div class="pd-run-detail">
-                                  @if (run.error) {
-                                    <div class="pd-run-error">{{ run.error }}</div>
-                                  }
-                                  @for (step of run.steps; track $index) {
-                                    <div class="pd-run-step pd-run-step--{{ step.status }}">
-                                      <span class="pd-run-step__key">{{ step.componentKey }}</span>
-                                      <span class="pd-run-step__status">{{ step.status }}</span>
+                      @if (expandedRunId() === run.id) {
+                        <mat-tab-group animationDuration="0">
+                          <mat-tab label="Steps">
+                            <div class="pd-tab-content">
+                              @if (run.error) {
+                                <div class="pd-run-error">{{ run.error }}</div>
+                              }
+                              @for (step of run.steps; track $index; let i = $index) {
+                                <div class="pd-step-item pd-step-item--{{ step.status }}">
+                                  <button
+                                    type="button"
+                                    class="pd-step-summary"
+                                    (click)="toggleStep(run.id, i)"
+                                  >
+                                    <span class="pd-run-step__key">{{ step.componentKey }}</span>
+                                    <span class="pd-run-step__status">{{ step.status }}</span>
+                                    <span class="pd-chevron">{{ isStepExpanded(run.id, i) ? '▾' : '▸' }}</span>
+                                  </button>
+                                  @if (isStepExpanded(run.id, i)) {
+                                    <div class="pd-step-detail">
                                       @if (step.error) {
-                                        <span class="pd-run-step__error">{{ step.error }}</span>
+                                        <pre class="pd-step-error">{{ step.error }}</pre>
+                                      }
+                                      @if (step.output) {
+                                        <pre class="pd-event-json">{{ step.output | json }}</pre>
+                                      }
+                                      @if (!step.error && !step.output) {
+                                        <span class="pd-empty">No output captured.</span>
                                       }
                                     </div>
                                   }
                                 </div>
                               }
                             </div>
-                          }
-                        </div>
+                          </mat-tab>
+                          <mat-tab label="Trigger Event">
+                            <div class="pd-tab-content">
+                              @if (run.triggerEvent) {
+                                <pre class="pd-event-json">{{ run.triggerEvent | json }}</pre>
+                              } @else {
+                                <p class="pd-empty">No event data captured.</p>
+                              }
+                            </div>
+                          </mat-tab>
+                        </mat-tab-group>
                       }
                     </div>
-                  </mat-tab>
-                }
-              </mat-tab-group>
+                  }
+                </div>
+              }
             </div>
           }
         </div>
