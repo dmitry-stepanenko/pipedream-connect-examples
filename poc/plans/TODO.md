@@ -3,9 +3,10 @@
 <!-- 3. openai gets serialized objects -->
 <!-- 4. rewrite to use a real db instead of KV, reuse models -->
 <!-- 5. interpolation should be resolved when testing the step -->
-6. suggestions and validation of interpolation in the UI
+6. suggestions of interpolation in the UI
+<!-- 6. validation of interpolation in the UI -->
 7. show steps progress
-8. workflows pages with filters, list of trigger events and runs
+<!-- 8. workflows pages with filters, list of trigger events and runs -->
 <!-- 3. have a place to manage connected accounts -->
 - prevent repitive tool calls if LLM goes into a loop? maybe validate it's not called more than N times?
 - add an ability to review mid-process

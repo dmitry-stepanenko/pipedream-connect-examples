@@ -26,6 +26,9 @@
       "@poc/ui-chat-elements": ["libs/ui-chat-elements/src/index.ts"],
       "@poc/data-access-structured-completion": [
         "libs/data-access-structured-completion/src/index.ts"
+      ],
+      "@poc/feature-deployed-triggers": [
+        "libs/feature-deployed-triggers/src/index.ts"
       ]
     }
   },

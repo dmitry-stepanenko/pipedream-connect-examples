@@ -17,7 +17,7 @@ export const appRoutes: Route[] = [
   {
     path: 'triggers',
     loadComponent: () =>
-      import('@poc/feature-workflow-builder').then(
+      import('@poc/feature-deployed-triggers').then(
         (m) => m.DeployedTriggersPageComponent,
       ),
   },
