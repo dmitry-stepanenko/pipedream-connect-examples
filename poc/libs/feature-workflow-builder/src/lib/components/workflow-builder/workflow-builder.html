@@ -16,7 +16,6 @@
               (blur)="saveName(nameInput.value)"
               (keydown.enter)="saveName(nameInput.value)"
               (keydown.escape)="editingName.set(false)"
-              autofocus
             />
           } @else {
             <h2 class="pd-workflow-name" (click)="editingName.set(true)" title="Click to rename">
@@ -175,6 +174,7 @@
                 <pd-component-form
                   [component]="pd.component"
                   [configuredProps]="pd.configuredProps"
+                  [availablePaths]="availablePaths()"
                   (configure)="onFormConfigure($event)"
                 />
               }

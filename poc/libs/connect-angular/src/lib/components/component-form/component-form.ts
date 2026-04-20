@@ -39,6 +39,8 @@ export class ComponentFormComponent {
   component = input.required<PdComponent>();
   /** Current configured values — passed in, updated via configure output */
   configuredProps = input<ConfiguredProps>({});
+  /** Available interpolation paths from prior steps (e.g. steps.slack.$return_value) */
+  availablePaths = input<string[]>([]);
   /** Emits the full updated configuredProps on every field change */
   configure = output<ConfiguredProps>();
 
