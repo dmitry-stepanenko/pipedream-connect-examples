@@ -1,8 +1,8 @@
 <!-- 1. it should show "connect" prompts in the UI -->
 <!-- 2. make sure we're able to autogenerate the whole flow -->
-3. openai gets serialized objects
+<!-- 3. openai gets serialized objects -->
 4. rewrite to use a real db instead of KV, reuse models
-5. interpolation should be resolved when testing the step
+<!-- 5. interpolation should be resolved when testing the step -->
 6. suggestions and validation of interpolation in the UI
 7. show steps progress
 8. workflows pages with filters, list of trigger events and runs

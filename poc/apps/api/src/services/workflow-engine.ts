@@ -49,7 +49,9 @@ export function resolveInterpolations(
       if (resolved === undefined) {
         throw new Error(`Unresolved interpolation: {{${path}}} — path does not exist in the execution context`);
       }
-      return resolved;
+      return (resolved !== null && typeof resolved === 'object')
+        ? JSON.stringify(resolved)
+        : resolved;
     }
     return value.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
       const trimmed = path.trim();

@@ -113,13 +113,12 @@ describe('resolveInterpolations', () => {
       expect(result).toBe('2026-04-14T23:59:59Z');
     });
 
-    it('preserves the original type when entire string is a single expression', () => {
-      // The calendar step returns an array — should stay an array, not be stringified
+    it('JSON-stringifies objects/arrays when entire string is a single expression', () => {
       const result = resolveInterpolations(
         '{{steps.google_calendar_list_events.$return_value}}',
         context,
       );
-      expect(result).toEqual(calendarOutput);
+      expect(result).toBe(JSON.stringify(calendarOutput));
     });
 
     it('JSON-stringifies non-string values when embedded in a larger string', () => {
