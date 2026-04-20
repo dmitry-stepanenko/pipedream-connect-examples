@@ -4,16 +4,14 @@ import type {
   WorkflowStep,
   WorkflowStepData,
   StepOutputSchema,
-  PipedreamStep,
+  StepSnapshot,
 } from '../workflow.model';
-import { PipedreamClientService } from '@poc/connect-angular';
 import { WorkflowApiService } from './workflow-api.service';
 
 export interface TestStepResult {
   success: boolean;
   error: string | null;
-  outputSchema: StepOutputSchema | null;
-  sampleOutput: unknown;
+  outputSnapshot: StepSnapshot | null;
 }
 
 function generateId(): string {
@@ -24,7 +22,6 @@ function generateId(): string {
 export class WorkflowService {
   // ── Dependencies ──────────────────────────────────────────────────────────
 
-  private readonly pdClient = inject(PipedreamClientService);
   private readonly api = inject(WorkflowApiService);
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -166,10 +163,10 @@ export class WorkflowService {
     this._dirty.set(true);
   }
 
-  private setStepTestStatus(
+  setStepSnapshot(
     workflowId: string,
     stepId: string,
-    tested: boolean,
+    snapshot: StepSnapshot | null,
   ) {
     this._workflows.update((list) =>
       list.map((w) =>
@@ -177,12 +174,15 @@ export class WorkflowService {
           ? {
               ...w,
               steps: w.steps.map((s) =>
-                s.id === stepId ? { ...s, tested } : s,
+                s.id === stepId
+                  ? { ...s, outputSnapshot: snapshot, tested: true }
+                  : s,
               ),
             }
           : w,
       ),
     );
+    this._dirty.set(true);
   }
 
   // ── Step testing ──────────────────────────────────────────────────────────
@@ -193,93 +193,34 @@ export class WorkflowService {
   ): Promise<TestStepResult> {
     const workflow = this._workflows().find((w) => w.id === workflowId);
     if (!workflow)
-      return {
-        success: false,
-        error: 'Workflow not found',
-        outputSchema: null,
-        sampleOutput: null,
-      };
+      return { success: false, error: 'Workflow not found', outputSnapshot: null };
 
-    const step = workflow.steps.find((s) => s.id === stepId);
-    if (!step?.data || step.data.source !== 'pipedream') {
+    const stepIndex = workflow.steps.findIndex((s) => s.id === stepId);
+
+    if (stepIndex === 0) {
       return {
         success: false,
-        error: 'Step must be configured before it can be tested.',
-        outputSchema: null,
-        sampleOutput: null,
+        error:
+          'Trigger steps cannot be run directly — they fire on their own. ' +
+          'The trigger is automatically marked as ready when configured. ' +
+          'Proceed to testing the next action step.',
+        outputSnapshot: null,
       };
     }
-
-    const pdStep = step.data as PipedreamStep;
-    const componentKey = pdStep.component.key;
-    if (!componentKey) {
-      return {
-        success: false,
-        error: 'Component has no key',
-        outputSchema: null,
-        sampleOutput: null,
-      };
-    }
-
-    this.setStepTestStatus(workflowId, stepId, false);
 
     try {
-      const result = await this.pdClient.runAction(
-        componentKey,
-        pdStep.configuredProps as Record<string, unknown>,
-        pdStep.component.configurableProps,
-      );
-      const typedResult = result as {
-        ret?: unknown;
-        exports?: Record<string, unknown>;
-        os?: Array<{ k: string; err?: { message?: string } }>;
-      };
-
-      const execError = typedResult.os?.find((o) => o.k === 'error');
-      if (execError) {
-        return {
-          success: false,
-          error: execError.err?.message ?? 'Step execution failed',
-          outputSchema: null,
-          sampleOutput: null,
-        };
+      const result = await this.api.testStep(workflowId, stepId);
+      if (result.success && result.outputSnapshot) {
+        this.setStepSnapshot(workflowId, stepId, result.outputSnapshot);
       }
-
-      const returnValue = typedResult.ret ?? typedResult.exports ?? null;
-      const schema = this.inferSchema(returnValue);
-      this.setStepOutputSchema(workflowId, stepId, schema);
-      return {
-        success: true,
-        error: null,
-        outputSchema: schema,
-        sampleOutput: returnValue,
-      };
+      return result;
     } catch (err: unknown) {
       return {
         success: false,
         error: err instanceof Error ? err.message : String(err),
-        outputSchema: null,
-        sampleOutput: null,
+        outputSnapshot: null,
       };
     }
-  }
-
-  private inferSchema(value: unknown): StepOutputSchema | null {
-    if (value == null) return null;
-    if (typeof value !== 'object' || Array.isArray(value)) return null;
-    const schema: StepOutputSchema = {};
-    for (const [key, val] of Object.entries(
-      value as Record<string, unknown>,
-    )) {
-      if (val === null) schema[key] = 'null';
-      else if (Array.isArray(val)) schema[key] = 'array';
-      else if (typeof val === 'object') schema[key] = 'object';
-      else if (typeof val === 'string') schema[key] = 'string';
-      else if (typeof val === 'number') schema[key] = 'number';
-      else if (typeof val === 'boolean') schema[key] = 'boolean';
-      else schema[key] = 'unknown';
-    }
-    return schema;
   }
 
   // ── Reorder ───────────────────────────────────────────────────────────────
@@ -289,17 +230,16 @@ export class WorkflowService {
     previousIndex: number,
     currentIndex: number,
   ) {
+    // Trigger is always index 0 and cannot be moved or displaced
+    if (previousIndex === 0 || currentIndex === 0) return;
+
     this._workflows.update((list) =>
       list.map((w) => {
         if (w.id !== workflowId) return w;
         const steps = [...w.steps];
         const [moved] = steps.splice(previousIndex, 1);
         steps.splice(currentIndex, 0, moved);
-        const retyped = steps.map((s, i) => ({
-          ...s,
-          type: (i === 0 ? 'trigger' : 'action') as 'trigger' | 'action',
-        }));
-        return { ...w, steps: retyped };
+        return { ...w, steps };
       }),
     );
     this._dirty.set(true);
@@ -313,6 +253,18 @@ export class WorkflowService {
       list.map((w) => (w.id === id ? workflow : w)),
     );
     return workflow;
+  }
+
+  async refreshTriggerSnapshot(workflowId: string): Promise<void> {
+    const workflow = this._workflows().find((w) => w.id === workflowId);
+    const triggerStep = workflow?.steps[0];
+    if (!triggerStep) return;
+    try {
+      const snapshot = await this.api.getTriggerSnapshot(workflowId);
+      this.setStepSnapshot(workflowId, triggerStep.id, snapshot);
+    } catch {
+      // Not all trigger types support synthetic snapshots — fail silently
+    }
   }
 
   async listTriggerEvents(id: string, n = 10): Promise<{ events: unknown[] }> {

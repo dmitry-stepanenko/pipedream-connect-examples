@@ -1,0 +1,77 @@
+import type { PipedreamStep, StepSnapshot } from '@poc/data-access-api';
+
+export function slugFromKey(componentKey: string): string {
+  return componentKey.replace(/-/g, '_');
+}
+
+/**
+ * Walks a snapshot object and returns every valid dot-path as a flat list.
+ * Used for both reference validation and future autocomplete suggestions.
+ */
+export function enumeratePaths(value: unknown, prefix = ''): string[] {
+  const paths: string[] = [];
+  if (prefix) paths.push(prefix);
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => {
+      paths.push(...enumeratePaths(item, prefix ? `${prefix}.${i}` : String(i)));
+    });
+  } else if (value !== null && typeof value === 'object') {
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      paths.push(...enumeratePaths(val, prefix ? `${prefix}.${key}` : key));
+    }
+  }
+  return paths;
+}
+
+export function validateStepReferences(
+  propValues: Record<string, unknown>,
+  steps: Array<{ data: unknown; outputSnapshot?: StepSnapshot | null; tested?: boolean }>,
+): { valid: true } | { valid: false; error: string; availablePaths: string[] } {
+  const refPattern = /\{\{steps\.([^.}]+)\.([^}]+)\}\}/g;
+  const allText = JSON.stringify(propValues);
+  let match: RegExpExecArray | null;
+
+  while ((match = refPattern.exec(allText)) !== null) {
+    const slug = match[1];
+    const path = match[2];
+
+    // Trigger references are validated at runtime — skip here
+    if (slug === 'trigger') continue;
+
+    const referencedStep = steps.find(
+      (s) =>
+        s.data &&
+        (s.data as PipedreamStep).source === 'pipedream' &&
+        slugFromKey((s.data as PipedreamStep).component?.key ?? '') === slug,
+    );
+
+    if (!referencedStep) {
+      return {
+        valid: false,
+        error: `Reference {{steps.${slug}.${path}}} refers to an unknown step "${slug}".`,
+        availablePaths: [],
+      };
+    }
+
+    if (!referencedStep.tested || !referencedStep.outputSnapshot) {
+      return {
+        valid: false,
+        error: `Reference {{steps.${slug}.${path}}} — step "${slug}" has not been tested yet. Test it first to capture its output.`,
+        availablePaths: [],
+      };
+    }
+
+    const validPaths = enumeratePaths(referencedStep.outputSnapshot).map(
+      (p) => `steps.${slug}.${p}`,
+    );
+    if (!validPaths.includes(`steps.${slug}.${path}`)) {
+      return {
+        valid: false,
+        error: `Invalid reference {{steps.${slug}.${path}}} — path not found in step output.`,
+        availablePaths: validPaths,
+      };
+    }
+  }
+
+  return { valid: true };
+}

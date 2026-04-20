@@ -32,12 +32,24 @@ export interface StepOutputSchema {
   [key: string]: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' | 'unknown';
 }
 
+/**
+ * Actual output captured from the last successful test run of a step.
+ * Stored verbatim so downstream steps and the reference validator have
+ * real path shapes to work with.
+ */
+export interface StepSnapshot {
+  $return_value: unknown;
+  exports: Record<string, unknown>;
+}
+
 export interface WorkflowStep {
   id: string;
   type: 'trigger' | 'action';
   data: WorkflowStepData | null; // null = step added but not yet configured
-  /** Schema inferred from the last successful test run */
+  /** Schema inferred from the last successful test run (used for triggers) */
   outputSchema?: StepOutputSchema | null;
+  /** Actual output from the last successful test run (action steps) */
+  outputSnapshot?: StepSnapshot | null;
   /** Whether this step has been tested at least once */
   tested?: boolean;
 }

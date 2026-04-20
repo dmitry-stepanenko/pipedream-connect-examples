@@ -12,6 +12,7 @@ import {
   unpublishWorkflow,
   executeWorkflow,
   getTestTriggerEvent,
+  testStep,
 } from '../services/workflow-engine';
 import {
   listExecutionRuns,
@@ -240,6 +241,50 @@ workflows.post('/:id/unpublish', async (c) => {
       externalUserId,
     );
     return c.json({ workflow });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 400);
+  }
+});
+
+// Test a single action step using stored snapshots for interpolation context
+workflows.post('/:id/steps/:stepId/test', async (c) => {
+  const { externalUserId } = await c.req.json();
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const pd = createPipedreamClient(c.env);
+  const result = await testStep(pd, c.env.WORKFLOWS, workflow, c.req.param('stepId'));
+  return c.json(result);
+});
+
+// Return a sample trigger event snapshot for the workflow's trigger step.
+// Works without publishing: schedule triggers get a synthetic event from their
+// configured props; other trigger types require a deployedTriggerId (published workflow).
+workflows.post('/:id/trigger-snapshot', async (c) => {
+  const { externalUserId } = await c.req.json();
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  try {
+    const pd = createPipedreamClient(c.env);
+    const event = await getTestTriggerEvent(pd, workflow, externalUserId);
+    if (!event) {
+      return c.json({ error: 'No sample event available — publish the workflow and let the trigger fire first.' }, 400);
+    }
+    return c.json({ snapshot: { $return_value: event, exports: {} } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: msg }, 400);

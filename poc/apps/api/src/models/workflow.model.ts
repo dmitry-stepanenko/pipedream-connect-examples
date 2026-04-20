@@ -31,11 +31,17 @@ export interface StepOutputSchema {
     | 'unknown';
 }
 
+export interface StepSnapshot {
+  $return_value: unknown;
+  exports: Record<string, unknown>;
+}
+
 export interface WorkflowStep {
   id: string;
   type: 'trigger' | 'action';
   data: WorkflowStepData | null;
   outputSchema?: StepOutputSchema | null;
+  outputSnapshot?: StepSnapshot | null;
   tested?: boolean;
 }
 

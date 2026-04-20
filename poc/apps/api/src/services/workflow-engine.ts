@@ -1,5 +1,5 @@
 import type { PipedreamClient } from '@pipedream/sdk/server';
-import type { Workflow, PipedreamStep } from '../models/workflow.model';
+import type { Workflow, PipedreamStep, StepSnapshot } from '../models/workflow.model';
 import type { ENV_VARS } from '../env-vars';
 import type {
   ExecutionRun,
@@ -306,6 +306,132 @@ export async function getTestTriggerEvent(
   return null;
 }
 
+export interface TestStepResult {
+  success: boolean;
+  outputSnapshot: StepSnapshot | null;
+  error: string | null;
+}
+
+/**
+ * Tests a single action step using stored snapshots from previous steps as the
+ * interpolation context. Enforces sequential order, resolves {{steps.*}} references,
+ * runs the step, and persists the resulting snapshot on the workflow.
+ */
+export async function testStep(
+  pd: PipedreamClient,
+  kv: KVNamespace,
+  workflow: Workflow,
+  stepId: string,
+): Promise<TestStepResult> {
+  const stepIndex = workflow.steps.findIndex((s) => s.id === stepId);
+  if (stepIndex < 0) {
+    return { success: false, outputSnapshot: null, error: 'Step not found' };
+  }
+  if (stepIndex === 0) {
+    return { success: false, outputSnapshot: null, error: 'Trigger steps cannot be tested directly' };
+  }
+
+  const step = workflow.steps[stepIndex];
+  if (!step.data || step.data.source !== 'pipedream') {
+    return { success: false, outputSnapshot: null, error: 'Step must be configured before testing' };
+  }
+
+  const prevStep = workflow.steps[stepIndex - 1];
+  if (!prevStep?.tested) {
+    const prevLabel =
+      prevStep?.data?.source === 'pipedream'
+        ? (prevStep.data as PipedreamStep).component?.key ?? `step ${stepIndex}`
+        : `step ${stepIndex}`;
+    return {
+      success: false,
+      outputSnapshot: null,
+      error: `Step cannot be tested until the previous step ("${prevLabel}") is tested first.`,
+    };
+  }
+
+  // Build interpolation context from the stored snapshots of preceding steps
+  const stepsContext: Record<string, unknown> = {};
+  for (let i = 0; i < stepIndex; i++) {
+    const s = workflow.steps[i];
+    if (!s.outputSnapshot) continue;
+    if (i === 0) {
+      stepsContext['trigger'] = { event: s.outputSnapshot.$return_value };
+    } else if (s.data?.source === 'pipedream') {
+      const key = (s.data as PipedreamStep).component?.key;
+      if (key) {
+        stepsContext[slugFromKey(key)] = {
+          $return_value: s.outputSnapshot.$return_value,
+          ...s.outputSnapshot.exports,
+        };
+      }
+    }
+  }
+
+  const pdStep = step.data as PipedreamStep;
+  const componentKey = pdStep.component.key;
+  if (!componentKey) {
+    return { success: false, outputSnapshot: null, error: 'Component has no key' };
+  }
+
+  const rawProps = pdStep.configuredProps as Record<string, unknown>;
+  const missingRequired = (pdStep.component.configurableProps ?? [])
+    .filter((p) => !p.optional)
+    .filter((p) => {
+      const val = rawProps[p.name];
+      if (p.type === 'app') {
+        // Stored as a bare authProvisionId string; normalizeAppProps wraps it later
+        return !val || (typeof val === 'string' && !val.trim());
+      }
+      return val === undefined || val === null || val === '';
+    })
+    .map((p) => p.label ?? p.name);
+
+  if (missingRequired.length > 0) {
+    return {
+      success: false,
+      outputSnapshot: null,
+      error: `Cannot test step — required properties not configured: ${missingRequired.join(', ')}`,
+    };
+  }
+
+  try {
+    const resolvedProps = resolveInterpolations(
+      pdStep.configuredProps as Record<string, unknown>,
+      { steps: stepsContext },
+    ) as Record<string, unknown>;
+
+    const configuredProps = normalizeAppProps(resolvedProps, pdStep.component.configurableProps);
+
+    console.log(JSON.stringify({ testStep: componentKey, configuredProps }, null, 2));
+    const result = await pd.actions.run({ id: componentKey, externalUserId: workflow.externalUserId, configuredProps });
+    console.log(JSON.stringify({ testStep: componentKey, result }, null, 2));
+
+    const typedResult = result as {
+      ret?: unknown;
+      exports?: Record<string, unknown>;
+      os?: Array<{ k: string; err?: { message?: string } }>;
+    };
+
+    const errorObs = typedResult.os?.find((o) => o.k === 'error');
+    if (errorObs) {
+      return { success: false, outputSnapshot: null, error: errorObs.err?.message ?? 'Step returned an error' };
+    }
+
+    const snapshot: StepSnapshot = {
+      $return_value: typedResult.ret ?? null,
+      exports: typedResult.exports ?? {},
+    };
+    step.outputSnapshot = snapshot;
+    step.tested = true;
+    workflow.updatedAt = new Date().toISOString();
+    await saveWorkflow(kv, workflow);
+
+    return { success: true, outputSnapshot: snapshot, error: null };
+  } catch (err) {
+    return { success: false, outputSnapshot: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export interface StepExecutionResult {
   stepId: string;
   componentKey: string;
@@ -392,6 +518,14 @@ export async function executeWorkflow(
       };
       stepsContext[slugFromKey(componentKey)] = stepOutput;
 
+      // Store snapshot so the step's output paths are available for downstream reference validation
+      const snapshot: StepSnapshot = {
+        $return_value: typedResult.ret ?? null,
+        exports: typedResult.exports ?? {},
+      };
+      step.outputSnapshot = snapshot;
+      step.tested = true;
+
       run.steps.push({
         stepId: step.id,
         componentKey,
@@ -427,6 +561,10 @@ export async function executeWorkflow(
   run.status = 'success';
   run.completedAt = new Date().toISOString();
   await saveExecutionRun(kv, run);
+
+  // Persist snapshots and tested flags stored on each step during execution
+  workflow.updatedAt = new Date().toISOString();
+  await saveWorkflow(kv, workflow);
 
   return run;
 }

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { PIPEDREAM_CONFIG } from '@poc/connect-angular';
-import type { Workflow } from '../workflow.model';
+import type { Workflow, StepSnapshot } from '../workflow.model';
 
 @Injectable({ providedIn: 'root' })
 export class WorkflowApiService {
@@ -79,6 +79,33 @@ export class WorkflowApiService {
     }
     const data = await res.json();
     return data.workflow;
+  }
+
+  async testStep(
+    workflowId: string,
+    stepId: string,
+  ): Promise<{ success: boolean; outputSnapshot: StepSnapshot | null; error: string | null }> {
+    const res = await fetch(`${this.baseUrl}/${workflowId}/steps/${stepId}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ externalUserId: this.userId }),
+    });
+    const data = await res.json();
+    return data as { success: boolean; outputSnapshot: StepSnapshot | null; error: string | null };
+  }
+
+  async getTriggerSnapshot(id: string): Promise<StepSnapshot> {
+    const res = await fetch(`${this.baseUrl}/${id}/trigger-snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ externalUserId: this.userId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error || `Failed to get trigger snapshot: ${res.status}`);
+    }
+    const data = await res.json();
+    return (data as { snapshot: StepSnapshot }).snapshot;
   }
 
   async emitTestEvent(id: string): Promise<{ event: unknown }> {

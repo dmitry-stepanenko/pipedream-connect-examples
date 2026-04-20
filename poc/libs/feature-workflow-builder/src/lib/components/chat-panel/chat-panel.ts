@@ -38,6 +38,7 @@ import {
   CHAT_SEND_MESSAGE,
 } from './connect-app.component';
 import { PropOption, PropOptionValue } from '@pipedream/sdk';
+import { validateStepReferences } from './step-reference.utils';
 
 @Component({
   selector: 'pd-workflow-suggestion-card',
@@ -320,6 +321,14 @@ export class ChatPanelComponent implements AfterViewInit {
 
       await this.workflowService.save(input.workflowId);
 
+      // For known trigger types, fetch and store a synthetic sample snapshot so
+      // the trigger step is immediately marked as tested and the LLM has real
+      // event paths to reference when configuring downstream steps.
+      if (triggerSchema) {
+        await this.workflowService.refreshTriggerSnapshot(input.workflowId);
+        await this.workflowService.save(input.workflowId);
+      }
+
       const appData =
         !!appProps[0] && (await this.pdClient.getApp(appProps[0].app));
       const authType = appData?.data?.authType;
@@ -435,6 +444,19 @@ export class ChatPanelComponent implements AfterViewInit {
           configuredProps: null,
         };
       }
+
+      const refCheck = validateStepReferences(props, workflow.steps);
+      if (!refCheck.valid) {
+        return {
+          success: false,
+          error: refCheck.error,
+          configuredProps: null,
+          ...(refCheck.availablePaths.length > 0
+            ? { availablePaths: refCheck.availablePaths }
+            : {}),
+        };
+      }
+
       // For props with remoteOptions, the LLM must use the machine-readable "value"
       // (e.g. a channel ID like "C0123456"), not the human-readable "label". Even with
       // explicit instructions, LLMs tend to rationalize using the label when the user
@@ -478,6 +500,15 @@ export class ChatPanelComponent implements AfterViewInit {
         configuredProps: merged,
       });
       await this.workflowService.save(input.workflowId);
+
+      // If props were updated on the trigger step, refresh its snapshot so
+      // the sample event reflects the new cron/timezone configuration.
+      const stepIndex = workflow.steps.findIndex((s) => s.id === input.stepId);
+      if (stepIndex === 0) {
+        await this.workflowService.refreshTriggerSnapshot(input.workflowId);
+        await this.workflowService.save(input.workflowId);
+      }
+
       return {
         success: true,
         error: null,
@@ -564,7 +595,7 @@ export class ChatPanelComponent implements AfterViewInit {
             customTriggerId:
               step.data?.source === 'custom' ? step.data.customTriggerId : null,
             tested: step.tested ?? false,
-            outputSchema: step.outputSchema ?? null,
+            outputSnapshot: step.outputSnapshot ?? null,
           })),
         },
       });
@@ -607,11 +638,14 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly testStepTool = createTool({
     name: 'test_step',
     description:
-      'Test a configured workflow step to discover its output schema. ' +
-      'The step can only be tested if it has been configured (configure_step + set_step_props). ' +
-      'Some steps may also require manual setup by the user (e.g. connecting an account) before testing will succeed. ' +
-      'After a successful test, the output schema is stored on the step and you can reference its data ' +
-      'in downstream steps via {{steps.STEP_NAME.$return_value.field}}.',
+      'Test a configured ACTION step to capture its actual output. ' +
+      'Do NOT call this on the trigger step (index 0) — triggers fire on their own and are ' +
+      'automatically marked as ready when configured via configure_step. ' +
+      'Action steps MUST be tested in order — step N can only be tested after step N-1 is tested. ' +
+      'The step must be fully configured (configure_step + set_step_props) before testing. ' +
+      'Some steps also require the user to connect an account first. ' +
+      'After a successful test, the output snapshot is stored and set_step_props will validate ' +
+      'any {{steps.STEP_NAME.*}} references against it.',
     schema: s.object('TestStepInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to test'),
@@ -893,12 +927,18 @@ ${examples}
             </trigger_schemas>
 
             <action_output_discovery>
-              For action steps, you MUST discover the output schema before referencing it:
+              Trigger steps (index 0) are automatically marked as ready when
+              configured — never call test_step on a trigger.
+
+              For action steps, you MUST test the step before referencing its output:
               1. Configure the step fully (configure_step + set_step_props).
               2. Ask the user to test the step: "I need to test this step to discover
                  what data it returns. Should I run it now?"
-              3. Call test_step to execute it. This stores the output schema.
-              4. Use the returned outputSchema to construct valid references.
+              3. Call test_step to execute it. Steps must be tested in order — test
+                 step N-1 before step N.
+              4. Use the returned outputSnapshot to construct valid references.
+                 set_step_props validates all {{steps.SLUG.*}} references against
+                 the stored snapshot and rejects any path that does not exist.
 
               NEVER guess action output fields. If a step hasn't been tested
               (tested: false in get_active_workflow), you don't know its output shape.

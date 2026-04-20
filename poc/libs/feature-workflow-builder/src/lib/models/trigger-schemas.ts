@@ -77,3 +77,4 @@ export const KNOWN_TRIGGER_SCHEMAS: TriggerEventSchema[] = [
 export function getTriggerSchema(componentKey: string): TriggerEventSchema | null {
   return KNOWN_TRIGGER_SCHEMAS.find((s) => s.componentKeys.includes(componentKey)) ?? null;
 }
+
