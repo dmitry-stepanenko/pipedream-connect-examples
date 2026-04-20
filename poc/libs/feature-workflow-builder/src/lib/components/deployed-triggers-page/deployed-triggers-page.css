@@ -109,44 +109,39 @@ code.pd-meta-value {
   font-size: 0.73rem;
 }
 
-/* Invocations panel */
-.pd-invocations {
+/* Details panel */
+.pd-details-panel {
   border-top: 1px solid #e5e7eb;
   background: #f9fafb;
-  padding: 0.875rem 1rem;
 }
 
-.pd-invocations-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.pd-invocations-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #374151;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.pd-events-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+/* Tab content */
+.pd-tab-content {
+  padding: 0.75rem 1rem;
   max-height: 400px;
   overflow-y: auto;
 }
 
-.pd-event-item {
+.pd-tab-content-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.pd-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pd-item {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
 }
 
-.pd-event-json {
+.pd-item-json {
   margin: 0;
   font-size: 0.75rem;
   color: #374151;
@@ -154,6 +149,109 @@ code.pd-meta-value {
   word-break: break-all;
   font-family: 'Menlo', 'Monaco', monospace;
 }
+
+/* Collapsible event items */
+.pd-event-item {
+  padding: 0;
+  overflow: hidden;
+}
+
+.pd-event-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.pd-event-summary:hover { background: #f3f4f6; }
+
+.pd-event-id {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #374151;
+}
+
+.pd-event-ts {
+  color: #6b7280;
+  flex: 1;
+  font-size: 0.75rem;
+}
+
+.pd-event-item .pd-item-json {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+/* Runs */
+.pd-run-item {
+  padding: 0;
+  overflow: hidden;
+}
+
+.pd-run-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.pd-run-summary:hover { background: #f3f4f6; }
+
+.pd-run-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+}
+
+.pd-run-status--success { background: #dcfce7; color: #15803d; }
+.pd-run-status--error { background: #fee2e2; color: #991b1b; }
+.pd-run-status--running { background: #dbeafe; color: #1d4ed8; }
+
+.pd-run-source { color: #6b7280; flex: 1; }
+.pd-run-ts { color: #9ca3af; font-size: 0.75rem; }
+.pd-chevron { color: #9ca3af; font-size: 0.7rem; }
+
+.pd-run-detail {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pd-run-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+  padding: 0.25rem 0;
+}
+
+.pd-run-step {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.pd-run-step__key { color: #374151; font-family: monospace; }
+.pd-run-step__status { font-weight: 500; }
+.pd-run-step--success .pd-run-step__status { color: #15803d; }
+.pd-run-step--error .pd-run-step__status { color: #dc2626; }
+.pd-run-step__error { color: #dc2626; }
 
 /* Buttons */
 .pd-btn {

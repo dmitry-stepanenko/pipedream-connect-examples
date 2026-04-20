@@ -1,6 +1,7 @@
 import { Component, inject, signal, resource } from '@angular/core';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { Router } from '@angular/router';
+import { MatTabsModule } from '@angular/material/tabs';
 import { WorkflowService } from '@poc/data-access-api';
 
 interface DeployedTrigger {
@@ -12,10 +13,25 @@ interface DeployedTrigger {
   [key: string]: unknown;
 }
 
+interface TriggerEvent {
+  id?: string;
+  ts?: number;
+  [key: string]: unknown;
+}
+
+interface ExecutionRun {
+  id: string;
+  status: string;
+  triggerSource: string;
+  startedAt: string;
+  error?: string;
+  steps: Array<{ componentKey: string; status: string; error?: string }>;
+}
+
 @Component({
   selector: 'pd-deployed-triggers-page',
   standalone: true,
-  imports: [DatePipe, JsonPipe],
+  imports: [DatePipe, JsonPipe, MatTabsModule],
   templateUrl: './deployed-triggers-page.html',
   styleUrl: './deployed-triggers-page.css',
 })
@@ -42,25 +58,43 @@ export class DeployedTriggersPageComponent {
     },
   });
 
+  // ── Expand / collapse ────────────────────────────────────────────────────
+
   protected readonly expandedTriggerId = signal<string | null>(null);
+
+  protected toggleExpanded(trigger: DeployedTrigger) {
+    const next = this.expandedTriggerId() === trigger.id ? null : trigger.id;
+    this.expandedTriggerId.set(next);
+    if (next) this.ensureEventsLoaded(trigger);
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+
   protected readonly eventsLoading = signal<string | null>(null);
-  protected readonly eventsMap = signal<Record<string, unknown[]>>({});
+  protected readonly eventsMap = signal<Record<string, TriggerEvent[]>>({});
   protected readonly eventsError = signal<Record<string, string>>({});
+  protected readonly expandedEventKey = signal<string | null>(null);
 
-  protected async toggleInvocations(trigger: DeployedTrigger) {
-    if (this.expandedTriggerId() === trigger.id) {
-      this.expandedTriggerId.set(null);
-      return;
-    }
+  protected toggleEventItem(triggerId: string, index: number) {
+    const key = `${triggerId}-${index}`;
+    this.expandedEventKey.update((cur) => (cur === key ? null : key));
+  }
 
-    this.expandedTriggerId.set(trigger.id);
+  protected isEventExpanded(triggerId: string, index: number): boolean {
+    return this.expandedEventKey() === `${triggerId}-${index}`;
+  }
 
+  private ensureEventsLoaded(trigger: DeployedTrigger) {
     if (this.eventsMap()[trigger.id]) return;
+    this.loadEvents(trigger);
+  }
 
+  protected async loadEvents(trigger: DeployedTrigger) {
     this.eventsLoading.set(trigger.id);
+    this.eventsError.update((m) => { const n = { ...m }; delete n[trigger.id]; return n; });
     try {
       const res = await this.workflowService.getDeployedTriggerEvents(trigger.id);
-      this.eventsMap.update((m) => ({ ...m, [trigger.id]: res.events }));
+      this.eventsMap.update((m) => ({ ...m, [trigger.id]: res.events as TriggerEvent[] }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.eventsError.update((m) => ({ ...m, [trigger.id]: msg }));
@@ -69,17 +103,30 @@ export class DeployedTriggersPageComponent {
     }
   }
 
-  protected async refreshEvents(trigger: DeployedTrigger) {
-    this.eventsLoading.set(trigger.id);
-    this.eventsError.update((m) => { const n = { ...m }; delete n[trigger.id]; return n; });
+  // ── Runs ──────────────────────────────────────────────────────────────────
+
+  protected readonly runsLoading = signal<string | null>(null);
+  protected readonly runsMap = signal<Record<string, ExecutionRun[]>>({});
+  protected readonly runsError = signal<Record<string, string>>({});
+  protected readonly expandedRunId = signal<string | null>(null);
+
+  protected toggleRun(id: string) {
+    this.expandedRunId.update((cur) => (cur === id ? null : id));
+  }
+
+  protected async loadRuns(trigger: DeployedTrigger) {
+    if (!trigger.workflow) return;
+    const workflowId = trigger.workflow.id;
+    this.runsLoading.set(trigger.id);
+    this.runsError.update((m) => { const n = { ...m }; delete n[trigger.id]; return n; });
     try {
-      const res = await this.workflowService.getDeployedTriggerEvents(trigger.id);
-      this.eventsMap.update((m) => ({ ...m, [trigger.id]: res.events }));
+      const res = await this.workflowService.listRuns(workflowId, 20);
+      this.runsMap.update((m) => ({ ...m, [workflowId]: res.runs as ExecutionRun[] }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.eventsError.update((m) => ({ ...m, [trigger.id]: msg }));
+      this.runsError.update((m) => ({ ...m, [trigger.id]: msg }));
     } finally {
-      this.eventsLoading.set(null);
+      this.runsLoading.set(null);
     }
   }
 }

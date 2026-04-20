@@ -1,10 +1,11 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, resource } from '@angular/core';
 import {
   CdkDragDrop,
   DragDropModule,
 } from '@angular/cdk/drag-drop';
 import { FormsModule } from '@angular/forms';
 import { DatePipe, JsonPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import type { ConfiguredProps } from '@pipedream/sdk';
 import { WorkflowService } from '@poc/data-access-api';
 import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '@poc/data-access-api';
@@ -21,6 +22,7 @@ import { ChatPanelComponent } from '../chat-panel/chat-panel';
     FormsModule,
     DatePipe,
     JsonPipe,
+    RouterLink,
     WorkflowStepComponent,
     StepPickerComponent,
     ComponentFormComponent,
@@ -49,15 +51,16 @@ export class WorkflowBuilderComponent {
   protected readonly testEventError = signal<string | null>(null);
   protected readonly testEventJson = signal<string | null>(null);
 
-  protected readonly loadingTriggerEvents = signal(false);
-  protected readonly triggerEvents = signal<unknown[] | null>(null);
-  protected readonly triggerEventsError = signal<string | null>(null);
-  protected readonly expandedEventId = signal<string | null>(null);
-
-  protected readonly loadingRuns = signal(false);
-  protected readonly executionRuns = signal<unknown[] | null>(null);
-  protected readonly executionRunsError = signal<string | null>(null);
-  protected readonly expandedRunId = signal<string | null>(null);
+  protected readonly runsSummary = resource({
+    loader: async () => {
+      const wf = this.workflowService.activeWorkflow();
+      const step = this.selectedStep();
+      const published = this.isPublished();
+      if (!wf || step?.type !== 'trigger' || !published) return undefined;
+      const res = await this.workflowService.listRuns(wf.id, 5);
+      return res.runs as Array<{ id: string; status: string; startedAt: string }>;
+    },
+  });
 
   protected get workflow() {
     return this.workflowService.activeWorkflow();
@@ -250,44 +253,6 @@ export class WorkflowBuilderComponent {
       this.testEventError.set(err instanceof Error ? err.message : String(err));
     } finally {
       this.emittingTestEvent.set(false);
-    }
-  }
-
-  protected async loadTriggerEvents() {
-    const w = this.workflow;
-    if (!w) return;
-    this.loadingTriggerEvents.set(true);
-    this.triggerEventsError.set(null);
-    try {
-      const res = await this.workflowService.listTriggerEvents(w.id, 10);
-      this.triggerEvents.set(res.events);
-    } catch (err) {
-      this.triggerEventsError.set(err instanceof Error ? err.message : String(err));
-    } finally {
-      this.loadingTriggerEvents.set(false);
-    }
-  }
-
-  protected toggleEvent(id: string) {
-    this.expandedEventId.update((cur) => (cur === id ? null : id));
-  }
-
-  protected toggleRun(id: string) {
-    this.expandedRunId.update((cur) => (cur === id ? null : id));
-  }
-
-  protected async loadExecutionRuns() {
-    const w = this.workflow;
-    if (!w) return;
-    this.loadingRuns.set(true);
-    this.executionRunsError.set(null);
-    try {
-      const res = await this.workflowService.listRuns(w.id, 20);
-      this.executionRuns.set(res.runs);
-    } catch (err) {
-      this.executionRunsError.set(err instanceof Error ? err.message : String(err));
-    } finally {
-      this.loadingRuns.set(false);
     }
   }
 
