@@ -7,13 +7,15 @@ import {
 } from '../services/workflow-store';
 import { executeWorkflow } from '../services/workflow-engine';
 import { createPipedreamClient } from '../utils/pipedream';
+import { createDb } from '../db';
 
 const webhooks = new Hono<{ Bindings: ENV_VARS }>();
 
 // Pipedream trigger webhook — receives events from deployed triggers
 webhooks.post('/pipedream/:workflowId', async (c) => {
+  const db = createDb(c.env.DB);
   const workflow = await getWorkflow(
-    c.env.WORKFLOWS,
+    db,
     c.req.param('workflowId'),
   );
   if (!workflow || workflow.status !== 'published') {
@@ -47,7 +49,7 @@ webhooks.post('/pipedream/:workflowId', async (c) => {
 
   // Execute in background — respond immediately
   c.executionCtx.waitUntil(
-    executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload, 'pipedream', triggerEventId)
+    executeWorkflow(pd, db, workflow, triggerPayload, 'pipedream', triggerEventId)
       .then((run) =>
         console.log(`Workflow ${workflow.id} run ${run.id} completed: ${run.status}`),
       )
@@ -67,8 +69,9 @@ webhooks.post('/custom/:customTriggerId', async (c) => {
     return c.json({ error: 'x-external-user-id header required' }, 400);
   }
 
+  const db = createDb(c.env.DB);
   const workflowIds = await getWorkflowsByCustomTrigger(
-    c.env.WORKFLOWS,
+    db,
     customTriggerId,
     externalUserId,
   );
@@ -83,9 +86,9 @@ webhooks.post('/custom/:customTriggerId', async (c) => {
   c.executionCtx.waitUntil(
     Promise.all(
       workflowIds.map(async (wfId) => {
-        const workflow = await getWorkflow(c.env.WORKFLOWS, wfId);
+        const workflow = await getWorkflow(db, wfId);
         if (!workflow || workflow.status !== 'published') return;
-        return executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload, 'custom');
+        return executeWorkflow(pd, db, workflow, triggerPayload, 'custom');
       }),
     )
       .then((runs) => {

@@ -7,6 +7,6 @@ export type ENV_VARS = {
   AZURE_OPENAI_ENDPOINT?: string;
   MCP_SERVER?: string;
   ALLOWED_CORS_ORIGINS?: string;
-  WORKFLOWS: KVNamespace;
+  DB: D1Database;
   WORKER_BASE_URL: string;
 };

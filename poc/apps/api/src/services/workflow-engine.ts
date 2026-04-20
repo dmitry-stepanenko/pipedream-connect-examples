@@ -6,13 +6,9 @@ import type {
   ExecutionStepResult,
   ExecutionTriggerSource,
 } from '../models/execution-run.model';
-import {
-  getWorkflow,
-  saveWorkflow,
-  indexCustomTrigger,
-  removeCustomTriggerIndex,
-} from './workflow-store';
+import { getWorkflow, saveWorkflow } from './workflow-store';
 import { createRunId, saveExecutionRun } from './execution-store';
+import type { Db } from '../db';
 import { normalizeAppProps } from '../utils/normalize-props';
 
 // ── Interpolation ────────────────────────────────────────────────────────────
@@ -80,12 +76,12 @@ export function resolveInterpolations(
 
 export async function publishWorkflow(
   pd: PipedreamClient,
-  kv: KVNamespace,
+  db: Db,
   env: ENV_VARS,
   workflowId: string,
   externalUserId: string,
 ): Promise<Workflow> {
-  const workflow = await getWorkflow(kv, workflowId);
+  const workflow = await getWorkflow(db, workflowId);
   if (!workflow) throw new Error('Workflow not found');
   if (workflow.externalUserId !== externalUserId) throw new Error('Forbidden');
   if (workflow.status === 'published')
@@ -120,28 +116,23 @@ export async function publishWorkflow(
     workflow.deployedTriggerId = (response as any).data?.id;
   } else if (trigger.data.source === 'custom') {
     workflow.customTriggerId = trigger.data.customTriggerId;
-    await indexCustomTrigger(
-      kv,
-      trigger.data.customTriggerId,
-      externalUserId,
-      workflow.id,
-    );
+    // customTriggerId is a column on the workflow row; saveWorkflow below persists it.
   }
 
   workflow.status = 'published';
   workflow.lastError = undefined;
   workflow.updatedAt = new Date().toISOString();
-  await saveWorkflow(kv, workflow);
+  await saveWorkflow(db, workflow);
   return workflow;
 }
 
 export async function unpublishWorkflow(
   pd: PipedreamClient,
-  kv: KVNamespace,
+  db: Db,
   workflowId: string,
   externalUserId: string,
 ): Promise<Workflow> {
-  const workflow = await getWorkflow(kv, workflowId);
+  const workflow = await getWorkflow(db, workflowId);
   if (!workflow) throw new Error('Workflow not found');
   if (workflow.externalUserId !== externalUserId) throw new Error('Forbidden');
 
@@ -156,21 +147,12 @@ export async function unpublishWorkflow(
     }
   }
 
-  if (workflow.customTriggerId) {
-    await removeCustomTriggerIndex(
-      kv,
-      workflow.customTriggerId,
-      externalUserId,
-      workflow.id,
-    );
-  }
-
   workflow.status = 'draft';
   workflow.deployedTriggerId = undefined;
   workflow.customTriggerId = undefined;
   workflow.lastError = undefined;
   workflow.updatedAt = new Date().toISOString();
-  await saveWorkflow(kv, workflow);
+  await saveWorkflow(db, workflow);
   return workflow;
 }
 
@@ -321,7 +303,7 @@ export interface TestStepResult {
  */
 export async function testStep(
   pd: PipedreamClient,
-  kv: KVNamespace,
+  db: Db,
   workflow: Workflow,
   stepId: string,
 ): Promise<TestStepResult> {
@@ -427,7 +409,7 @@ export async function testStep(
     step.outputSnapshot = snapshot;
     step.tested = true;
     workflow.updatedAt = new Date().toISOString();
-    await saveWorkflow(kv, workflow);
+    await saveWorkflow(db, workflow);
 
     return { success: true, outputSnapshot: snapshot, error: null };
   } catch (err) {
@@ -445,7 +427,7 @@ export interface StepExecutionResult {
 
 export async function executeWorkflow(
   pd: PipedreamClient,
-  kv: KVNamespace,
+  db: Db,
   workflow: Workflow,
   triggerPayload: unknown,
   triggerSource: ExecutionTriggerSource = 'pipedream',
@@ -465,7 +447,7 @@ export async function executeWorkflow(
   };
 
   // Persist initial running state
-  await saveExecutionRun(kv, run);
+  await saveExecutionRun(db, run);
 
   // steps context is keyed by component slug (e.g. "google_calendar_list_events")
   // matching Pipedream's {{steps.X.Y}} interpolation convention.
@@ -552,22 +534,22 @@ export async function executeWorkflow(
       run.status = 'error';
       run.error = `Step ${componentKey} failed: ${errorMsg}`;
       run.completedAt = new Date().toISOString();
-      await saveExecutionRun(kv, run);
+      await saveExecutionRun(db, run);
 
       workflow.lastError = run.error;
       workflow.updatedAt = new Date().toISOString();
-      await saveWorkflow(kv, workflow);
+      await saveWorkflow(db, workflow);
       return run;
     }
   }
 
   run.status = 'success';
   run.completedAt = new Date().toISOString();
-  await saveExecutionRun(kv, run);
+  await saveExecutionRun(db, run);
 
   // Persist snapshots and tested flags stored on each step during execution
   workflow.updatedAt = new Date().toISOString();
-  await saveWorkflow(kv, workflow);
+  await saveWorkflow(db, workflow);
 
   return run;
 }

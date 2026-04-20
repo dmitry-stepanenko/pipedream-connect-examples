@@ -19,6 +19,7 @@ import {
   getExecutionRun,
 } from '../services/execution-store';
 import { createPipedreamClient } from '../utils/pipedream';
+import { createDb } from '../db';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -33,7 +34,8 @@ workflows.get('/', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const items = await listWorkflows(c.env.WORKFLOWS, externalUserId);
+  const db = createDb(c.env.DB);
+  const items = await listWorkflows(db, externalUserId);
   return c.json({ workflows: items });
 });
 
@@ -57,7 +59,8 @@ workflows.post('/', async (c) => {
     updatedAt: now,
   };
 
-  await saveWorkflow(c.env.WORKFLOWS, workflow);
+  const db = createDb(c.env.DB);
+  await saveWorkflow(db, workflow);
   return c.json({ workflow }, 201);
 });
 
@@ -93,7 +96,8 @@ workflows.get('/:id', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -108,7 +112,8 @@ workflows.put('/:id', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -119,7 +124,7 @@ workflows.put('/:id', async (c) => {
   if (updates.steps !== undefined) workflow.steps = updates.steps;
   workflow.updatedAt = new Date().toISOString();
 
-  await saveWorkflow(c.env.WORKFLOWS, workflow);
+  await saveWorkflow(db, workflow);
   return c.json({ workflow });
 });
 
@@ -130,17 +135,18 @@ workflows.delete('/:id', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
 
   if (workflow.status === 'published') {
     const pd = createPipedreamClient(c.env);
-    await unpublishWorkflow(pd, c.env.WORKFLOWS, workflow.id, externalUserId);
+    await unpublishWorkflow(pd, db, workflow.id, externalUserId);
   }
 
-  await deleteWorkflow(c.env.WORKFLOWS, workflow.id, externalUserId);
+  await deleteWorkflow(db, workflow.id);
   return new Response(null, { status: 204 });
 });
 
@@ -152,7 +158,8 @@ workflows.get('/:id/trigger-events', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -182,9 +189,10 @@ workflows.post('/:id/publish', async (c) => {
 
   try {
     const pd = createPipedreamClient(c.env);
+    const db = createDb(c.env.DB);
     const workflow = await publishWorkflow(
       pd,
-      c.env.WORKFLOWS,
+      db,
       c.env,
       c.req.param('id'),
       externalUserId,
@@ -203,7 +211,8 @@ workflows.post('/:id/trigger', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -217,7 +226,7 @@ workflows.post('/:id/trigger', async (c) => {
       (await getTestTriggerEvent(pd, workflow, externalUserId)) ?? {};
     console.log(JSON.stringify({ triggerPayload }, null, 2));
 
-    const run = await executeWorkflow(pd, c.env.WORKFLOWS, workflow, triggerPayload, 'test');
+    const run = await executeWorkflow(pd, db, workflow, triggerPayload, 'test');
     return c.json({ run });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -234,9 +243,10 @@ workflows.post('/:id/unpublish', async (c) => {
 
   try {
     const pd = createPipedreamClient(c.env);
+    const db = createDb(c.env.DB);
     const workflow = await unpublishWorkflow(
       pd,
-      c.env.WORKFLOWS,
+      db,
       c.req.param('id'),
       externalUserId,
     );
@@ -254,13 +264,14 @@ workflows.post('/:id/steps/:stepId/test', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
 
   const pd = createPipedreamClient(c.env);
-  const result = await testStep(pd, c.env.WORKFLOWS, workflow, c.req.param('stepId'));
+  const result = await testStep(pd, db, workflow, c.req.param('stepId'));
   return c.json(result);
 });
 
@@ -273,7 +284,8 @@ workflows.post('/:id/trigger-snapshot', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -299,7 +311,8 @@ workflows.post('/:id/emit-test-event', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
@@ -325,12 +338,13 @@ workflows.get('/:id/runs', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
 
-  const runs = await listExecutionRuns(c.env.WORKFLOWS, workflow.id, limit);
+  const runs = await listExecutionRuns(db, workflow.id, limit);
   return c.json({ runs });
 });
 
@@ -341,12 +355,13 @@ workflows.get('/:id/runs/:runId', async (c) => {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  const workflow = await getWorkflow(c.env.WORKFLOWS, c.req.param('id'));
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
 
-  const run = await getExecutionRun(c.env.WORKFLOWS, c.req.param('runId'));
+  const run = await getExecutionRun(db, c.req.param('runId'));
   if (!run || run.workflowId !== workflow.id) {
     return c.json({ error: 'Run not found' }, 404);
   }

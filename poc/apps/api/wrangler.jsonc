@@ -12,10 +12,11 @@
     "WORKER_BASE_URL": "https://workflows-api.dmitry-stepanenko.workers.dev",
     "ALLOWED_CORS_ORIGINS": "workflows-poc.pages.dev"
   },
-  "kv_namespaces": [
+  "d1_databases": [
     {
-      "binding": "WORKFLOWS",
-      "id": "2ecc9e85224d407ba94b71801d34f2e1",
+      "binding": "DB",
+      "database_name": "workflows-db",
+      "database_id": "1a5ea8f0-f991-4887-ac38-eb642f588a12",
     },
   ],
   "secrets": {

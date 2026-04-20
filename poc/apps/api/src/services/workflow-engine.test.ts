@@ -6,9 +6,18 @@ import {
 } from './workflow-engine';
 import type { Workflow } from '../models/workflow.model';
 
-// Cloudflare Workers KVNamespace is not available in the Jest environment;
-// tests use a minimal jest.fn() stand-in cast to any.
-type AnyKv = any;
+// Mock the store modules so that persistence calls are no-ops in tests.
+jest.mock('../services/workflow-store', () => ({
+  saveWorkflow: jest.fn().mockResolvedValue(undefined),
+  getWorkflow: jest.fn().mockResolvedValue(null),
+}));
+jest.mock('../services/execution-store', () => ({
+  createRunId: jest.requireActual('../services/execution-store').createRunId,
+  saveExecutionRun: jest.fn().mockResolvedValue(undefined),
+}));
+
+// The db arg is passed through to mocked store functions and never accessed directly.
+type AnyDb = any;
 
 // ── slugFromKey ──────────────────────────────────────────────────────────────
 
@@ -299,15 +308,12 @@ describe('executeWorkflow', () => {
   ];
 
   let mockActionsRun: jest.Mock;
-  let mockKv: AnyKv;
+  let mockDb: AnyDb;
   let mockPd: any;
 
   beforeEach(() => {
     mockActionsRun = jest.fn();
-    mockKv = {
-      get: jest.fn().mockResolvedValue(null),
-      put: jest.fn().mockResolvedValue(undefined),
-    };
+    mockDb = {};
     mockPd = { actions: { run: mockActionsRun } };
   });
 
@@ -316,7 +322,7 @@ describe('executeWorkflow', () => {
       .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
       .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
 
-    await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     const calendarCall = mockActionsRun.mock.calls[0][0];
     expect(calendarCall.configuredProps.timeMin).toBe('2026-04-14T00:00:00Z');
@@ -328,7 +334,7 @@ describe('executeWorkflow', () => {
       .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
       .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
 
-    await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     const slackCall = mockActionsRun.mock.calls[1][0];
     expect(slackCall.configuredProps.text).toBe(
@@ -341,7 +347,7 @@ describe('executeWorkflow', () => {
       .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
       .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
 
-    await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     const calendarCall = mockActionsRun.mock.calls[0][0];
     expect(calendarCall.configuredProps.googleCalendar).toEqual({
@@ -354,7 +360,7 @@ describe('executeWorkflow', () => {
       .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
       .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
 
-    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     expect(run.status).toBe('success');
     expect(run.steps).toHaveLength(2);
@@ -373,7 +379,7 @@ describe('executeWorkflow', () => {
   it('stops execution and records error when a step throws', async () => {
     mockActionsRun.mockRejectedValueOnce(new Error('API quota exceeded'));
 
-    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     expect(run.status).toBe('error');
     expect(run.steps).toHaveLength(1);
@@ -393,7 +399,7 @@ describe('executeWorkflow', () => {
       exports: {},
     });
 
-    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     expect(run.status).toBe('error');
     expect(run.steps).toHaveLength(1);
@@ -412,7 +418,7 @@ describe('executeWorkflow', () => {
       exports: {},
     });
 
-    const run = await executeWorkflow(mockPd, mockKv, workflow, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockDb, workflow, triggerPayload);
 
     expect(run.steps[0].status).toBe('error');
     expect(run.steps[0].error).toBe('Step returned an error');
@@ -425,7 +431,7 @@ describe('executeWorkflow', () => {
       .mockResolvedValueOnce({ ret: calendarEvents, exports: {} })
       .mockResolvedValueOnce({ ret: { ok: true }, exports: {} });
 
-    await executeWorkflow(mockPd, mockKv, workflow, {
+    await executeWorkflow(mockPd, mockDb, workflow, {
       timezone_configured: { iso8601: { date: '2026-04-14' } },
     });
 
@@ -435,7 +441,7 @@ describe('executeWorkflow', () => {
   });
 
   it('fails the step when trigger interpolations cannot be resolved (empty payload)', async () => {
-    const run = await executeWorkflow(mockPd, mockKv, workflow, {});
+    const run = await executeWorkflow(mockPd, mockDb, workflow, {});
 
     expect(run.status).toBe('error');
     expect(run.steps).toHaveLength(1);
@@ -462,7 +468,7 @@ describe('executeWorkflow', () => {
       ],
     };
 
-    const run = await executeWorkflow(mockPd, mockKv, workflowWithBadRef, triggerPayload);
+    const run = await executeWorkflow(mockPd, mockDb, workflowWithBadRef, triggerPayload);
 
     expect(run.status).toBe('error');
     expect(run.steps[0].status).toBe('error');

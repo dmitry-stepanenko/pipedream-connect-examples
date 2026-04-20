@@ -1,8 +1,7 @@
-import type { ExecutionRun } from '../models/execution-run.model';
-
-// KV key patterns:
-//   run:{runId}                      → ExecutionRun JSON
-//   wf-runs:{workflowId}            → string[] of runIds (newest first, capped)
+import { eq, desc, inArray } from 'drizzle-orm';
+import type { ExecutionRun, ExecutionStepResult } from '../models/execution-run.model';
+import type { Db } from '../db';
+import { executionRuns as runsTable, executionStepResults } from '../db/schema';
 
 const MAX_RUNS_PER_WORKFLOW = 50;
 
@@ -14,52 +13,150 @@ export function createRunId(): string {
   return generateRunId();
 }
 
+// ── Row → model assembly ────────────────────────────────────────────────────
+
+function rowToRun(
+  row: typeof runsTable.$inferSelect,
+  steps: (typeof executionStepResults.$inferSelect)[],
+): ExecutionRun {
+  return {
+    id: row.id,
+    workflowId: row.workflowId,
+    externalUserId: row.externalUserId,
+    triggerSource: row.triggerSource as ExecutionRun['triggerSource'],
+    triggerEventId: row.triggerEventId ?? undefined,
+    triggerEvent: JSON.parse(row.triggerEvent),
+    status: row.status as ExecutionRun['status'],
+    steps: steps.map((s) => ({
+      stepId: s.stepId,
+      componentKey: s.componentKey,
+      startedAt: s.startedAt,
+      completedAt: s.completedAt,
+      status: s.status as ExecutionStepResult['status'],
+      output: s.output ? JSON.parse(s.output) : undefined,
+      error: s.error ?? undefined,
+    })),
+    startedAt: row.startedAt,
+    completedAt: row.completedAt ?? undefined,
+    error: row.error ?? undefined,
+  };
+}
+
+// ── Store functions ─────────────────────────────────────────────────────────
+
 export async function saveExecutionRun(
-  kv: KVNamespace,
+  db: Db,
   run: ExecutionRun,
 ): Promise<void> {
-  await kv.put(`run:${run.id}`, JSON.stringify(run));
+  const upsert = db
+    .insert(runsTable)
+    .values({
+      id: run.id,
+      workflowId: run.workflowId,
+      externalUserId: run.externalUserId,
+      triggerSource: run.triggerSource,
+      triggerEventId: run.triggerEventId ?? null,
+      triggerEvent: JSON.stringify(run.triggerEvent),
+      status: run.status,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt ?? null,
+      error: run.error ?? null,
+    })
+    .onConflictDoUpdate({
+      target: runsTable.id,
+      set: {
+        status: run.status,
+        completedAt: run.completedAt ?? null,
+        error: run.error ?? null,
+      },
+    });
 
-  // Update workflow runs index (newest first, capped)
-  const indexKey = `wf-runs:${run.workflowId}`;
-  const idsJson = await kv.get(indexKey);
-  const ids: string[] = idsJson ? JSON.parse(idsJson) : [];
+  const deleteSteps = db
+    .delete(executionStepResults)
+    .where(eq(executionStepResults.runId, run.id));
 
-  // Add to front if not already present
-  if (!ids.includes(run.id)) {
-    ids.unshift(run.id);
+  if (run.steps.length === 0) {
+    await db.batch([upsert, deleteSteps]);
+  } else {
+    const insertSteps = db.insert(executionStepResults).values(
+      run.steps.map((s, i) => ({
+        runId: run.id,
+        stepOrder: i,
+        stepId: s.stepId,
+        componentKey: s.componentKey,
+        startedAt: s.startedAt,
+        completedAt: s.completedAt,
+        status: s.status,
+        output: s.output !== undefined ? JSON.stringify(s.output) : null,
+        error: s.error ?? null,
+      })),
+    );
+    await db.batch([upsert, deleteSteps, insertSteps]);
   }
 
-  // Cap the index
-  if (ids.length > MAX_RUNS_PER_WORKFLOW) {
-    const removed = ids.splice(MAX_RUNS_PER_WORKFLOW);
-    // Clean up old run records
-    await Promise.all(removed.map((id) => kv.delete(`run:${id}`)));
-  }
+  // Cap runs per workflow — runs beyond MAX_RUNS_PER_WORKFLOW are removed.
+  // Done outside the transaction so the overflow check sees the committed insert.
+  const allRunIds = await db
+    .select({ id: runsTable.id })
+    .from(runsTable)
+    .where(eq(runsTable.workflowId, run.workflowId))
+    .orderBy(desc(runsTable.startedAt));
 
-  await kv.put(indexKey, JSON.stringify(ids));
+  const toDelete = allRunIds.slice(MAX_RUNS_PER_WORKFLOW);
+  if (toDelete.length > 0) {
+    await db
+      .delete(runsTable)
+      .where(inArray(runsTable.id, toDelete.map((r) => r.id)));
+    // execution_step_results cascade on delete
+  }
 }
 
 export async function getExecutionRun(
-  kv: KVNamespace,
+  db: Db,
   runId: string,
 ): Promise<ExecutionRun | null> {
-  const json = await kv.get(`run:${runId}`);
-  return json ? JSON.parse(json) : null;
+  const [row] = await db
+    .select()
+    .from(runsTable)
+    .where(eq(runsTable.id, runId))
+    .limit(1);
+
+  if (!row) return null;
+
+  const steps = await db
+    .select()
+    .from(executionStepResults)
+    .where(eq(executionStepResults.runId, runId))
+    .orderBy(executionStepResults.stepOrder);
+
+  return rowToRun(row, steps);
 }
 
 export async function listExecutionRuns(
-  kv: KVNamespace,
+  db: Db,
   workflowId: string,
   limit = 20,
 ): Promise<ExecutionRun[]> {
-  const indexKey = `wf-runs:${workflowId}`;
-  const idsJson = await kv.get(indexKey);
-  if (!idsJson) return [];
+  const runs = await db
+    .select()
+    .from(runsTable)
+    .where(eq(runsTable.workflowId, workflowId))
+    .orderBy(desc(runsTable.startedAt))
+    .limit(limit);
 
-  const ids: string[] = JSON.parse(idsJson);
-  const sliced = ids.slice(0, limit);
+  if (runs.length === 0) return [];
 
-  const runs = await Promise.all(sliced.map((id) => getExecutionRun(kv, id)));
-  return runs.filter((r): r is ExecutionRun => r !== null);
+  const runIds = runs.map((r) => r.id);
+  const steps = await db
+    .select()
+    .from(executionStepResults)
+    .where(inArray(executionStepResults.runId, runIds))
+    .orderBy(executionStepResults.stepOrder);
+
+  return runs.map((r) =>
+    rowToRun(
+      r,
+      steps.filter((s) => s.runId === r.id),
+    ),
+  );
 }
