@@ -1007,6 +1007,18 @@ Respond with a structured review.`,
               - Action exports: {{steps.STEP_NAME.EXPORT_NAME}}
               - STEP_NAME is the component key with hyphens replaced by underscores
                 (e.g. component "google_calendar-list-events" → steps.google_calendar_list_events)
+              - ALWAYS use the most specific (deepest) path that contains the data
+                the downstream prop actually needs. NEVER reference a parent object
+                when a specific field inside it is what the prop requires.
+                If a prop expects a string (e.g. a message body, subject, or label),
+                navigate all the way to the leaf string field — passing an entire
+                object will cause the step to receive "[object Object]" or a raw
+                JSON blob, not the intended value.
+                Example: a step returning { summary: "...", usage: {...} } —
+                use {{steps.openai_step.$return_value.summary}} for a text field,
+                NOT {{steps.openai_step.$return_value}}.
+                When in doubt, check the outputSnapshot from test_step to pick the
+                correct leaf path.
             </rules>
 
             <trigger_schemas>
