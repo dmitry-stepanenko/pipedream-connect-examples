@@ -15,6 +15,7 @@ Bugs:
 <!-- 1. when account is disconnected, it's not reflected in the workflow -->
 2. sometimes connected accounts do not show authorized data until you reconnect
 3. if configure step throws, it may try to call it again and again indefinitely
+ - not set checkboxes should not be treated as required
 <!-- 4. it's not always asking to connect or when it does, the llm stream is not finished -->
 <!-- 5. AI Chat does not wait for auth-guarded data of the step to be loaded -->
 
@@ -25,3 +26,6 @@ we need to be able to resolve interpolation in fields. I'd like to
 1. show an object with all possible values. when you click on a certain property, it's path gets injected in the field
 2. validate interpolation in the ui
  -->
+ - reorder steps
+ - other triggers
+ - review should self heal the workflow

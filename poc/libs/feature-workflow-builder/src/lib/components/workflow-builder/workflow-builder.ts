@@ -51,6 +51,10 @@ export class WorkflowBuilderComponent {
   protected readonly testEventError = signal<string | null>(null);
   protected readonly testEventJson = signal<string | null>(null);
 
+  protected readonly tryingTrigger = signal(false);
+  protected readonly tryTriggerError = signal<string | null>(null);
+  protected readonly tryTriggerJson = signal<string | null>(null);
+
   protected readonly runsSummary = resource({
     loader: async () => {
       const wf = this.workflowService.activeWorkflow();
@@ -280,6 +284,23 @@ export class WorkflowBuilderComponent {
     } finally {
       this.emittingTestEvent.set(false);
     }
+  }
+
+  protected async tryTrigger() {
+    const w = this.workflow;
+    if (!w) return;
+    this.tryingTrigger.set(true);
+    this.tryTriggerError.set(null);
+    this.tryTriggerJson.set(null);
+    const result = await this.workflowService.tryTrigger(w.id);
+    if (result.success) {
+      const step = this.workflowService.activeSteps()[0];
+      const snapshot = step?.outputSnapshot;
+      this.tryTriggerJson.set(snapshot ? JSON.stringify(snapshot.$return_value, null, 2) : null);
+    } else {
+      this.tryTriggerError.set(result.error);
+    }
+    this.tryingTrigger.set(false);
   }
 
   protected async unpublish() {

@@ -166,6 +166,19 @@ export class WorkflowApiService {
     return res.json();
   }
 
+  async tryTrigger(id: string): Promise<{ snapshot: import('../workflow.model').StepSnapshot }> {
+    const res = await fetch(`${this.baseUrl}/${id}/try-trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ externalUserId: this.userId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error || `Failed to try trigger: ${res.status}`);
+    }
+    return res.json();
+  }
+
   async unpublishWorkflow(id: string): Promise<Workflow> {
     const res = await fetch(`${this.baseUrl}/${id}/unpublish`, {
       method: 'POST',

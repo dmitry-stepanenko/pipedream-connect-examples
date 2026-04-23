@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { ENV_VARS } from '../env-vars';
-import type { Workflow } from '../models/workflow.model';
+import type { Workflow, WorkflowStep } from '../models/workflow.model';
 import {
   listWorkflows,
   getWorkflow,
@@ -14,6 +14,7 @@ import {
   executeWorkflow,
   getTestTriggerEvent,
   testStep,
+  tryTrigger,
 } from '../services/workflow-engine';
 import { isEqual } from 'lodash-es';
 import {
@@ -25,6 +26,48 @@ import { createDb } from '../db';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Compares incoming steps against the stored steps and clears outputSnapshot /
+ * outputSchema / tested on any step — and every step after it — where:
+ *   - the step ID at a given position changed (insertion, removal, reorder), OR
+ *   - the step's data (component + configuredProps) changed.
+ *
+ * This makes the backend the authoritative source for snapshot freshness.
+ * The frontend also clears eagerly for immediate UI feedback, but the response
+ * from this endpoint is what the frontend ultimately stores.
+ */
+function invalidateStaleSnapshots(
+  oldSteps: WorkflowStep[],
+  newSteps: WorkflowStep[],
+): WorkflowStep[] {
+  let invalidateFrom = newSteps.length; // sentinel: nothing changed
+
+  for (let i = 0; i < newSteps.length; i++) {
+    const old = oldSteps[i];
+    const next = newSteps[i];
+
+    // Step identity changed at this position (inserted, removed, or reordered).
+    if (!old || old.id !== next.id) {
+      invalidateFrom = i;
+      break;
+    }
+
+    // Same step, but its component or configured props changed.
+    if (!isEqual(old.data, next.data)) {
+      invalidateFrom = i;
+      break;
+    }
+  }
+
+  if (invalidateFrom >= newSteps.length) return newSteps;
+
+  return newSteps.map((step, i) =>
+    i >= invalidateFrom
+      ? { ...step, outputSnapshot: null, outputSchema: null, tested: false }
+      : step,
+  );
 }
 
 const workflows = new Hono<{ Bindings: ENV_VARS }>();
@@ -173,7 +216,7 @@ workflows.put('/:id', async (c) => {
       workflow = await unpublishWorkflow(pd, db, workflow.id, externalUserId);
     }
 
-    workflow.steps = updates.steps;
+    workflow.steps = invalidateStaleSnapshots(workflow.steps, updates.steps);
   }
 
   workflow.updatedAt = new Date().toISOString();
@@ -326,6 +369,33 @@ workflows.post('/:id/steps/:stepId/test', async (c) => {
   const pd = createPipedreamClient(c.env);
   const result = await testStep(pd, db, workflow, c.req.param('stepId'));
   return c.json(result);
+});
+
+// Try the trigger — captures a sample event without requiring a full workflow publish.
+// Schedule triggers return a synthetic event immediately. App triggers are
+// temporarily deployed with emitOnDeploy, polled for their first event, then
+// deleted. The resulting snapshot is persisted on the trigger step so that
+// downstream action steps can reference {{steps.trigger.event.*}}.
+workflows.post('/:id/try-trigger', async (c) => {
+  const { externalUserId } = await c.req.json();
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  try {
+    const pd = createPipedreamClient(c.env);
+    const result = await tryTrigger(pd, db, c.env, workflow, externalUserId);
+    return c.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 400);
+  }
 });
 
 // Return a sample trigger event snapshot for the workflow's trigger step.

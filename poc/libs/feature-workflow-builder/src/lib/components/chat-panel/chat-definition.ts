@@ -16,6 +16,7 @@ import {
 } from '../../models/trigger-schemas';
 import { MarkdownComponent } from '@poc/ui-chat-elements';
 import { ConnectAppComponent } from './connect-app.component';
+import { TryTriggerComponent } from './components/try-trigger.component';
 import { PropOption, PropOptionValue } from '@pipedream/sdk';
 import { validateStepReferences } from './step-reference.utils';
 import { WorkflowSuggestionCard } from './components/workflow-suggestions-card.component';
@@ -44,15 +45,87 @@ export class AIChatDefinition {
   private readonly addStepTool = createTool({
     name: 'add_workflow_step',
     description:
-      'Add a new action step to the specified workflow. Returns the step ID.',
+      'Add a new action step to the workflow. ' +
+      'Pass afterStepId to insert it immediately after a specific step (by that step\'s ID). ' +
+      'Omit afterStepId to append it at the end. ' +
+      'The trigger step (index 0) cannot be used as afterStepId to insert at position 1 — just omit afterStepId and reorder afterward if needed. ' +
+      'Returns the new step ID.',
     schema: s.object('AddStepInput', {
       workflowId: s.string('The workflow ID'),
       stepName: s.string('Human readable name of the step'),
+      afterStepId: s.string(
+        'Step ID to insert after. Omit to append to the end.',
+      ),
     }),
     handler: async (input) => {
-      const step = await this.workflowService.addStep(input.workflowId);
+      const afterStepId = (input as { afterStepId?: string }).afterStepId;
+      const step = this.workflowService.addStep(input.workflowId, afterStepId);
       await this.workflowService.save(input.workflowId);
       return { stepId: step.id };
+    },
+  });
+
+  private readonly moveStepTool = createTool({
+    name: 'move_workflow_step',
+    description:
+      'Move an existing action step to a new position in the workflow. ' +
+      'The trigger (index 0) can never be moved or displaced. ' +
+      'Provide the step to move and the step it should be placed immediately AFTER. ' +
+      'To move a step to position 1 (first action, right after the trigger), ' +
+      'pass the trigger step ID as afterStepId. ' +
+      'Invalidates outputSnapshot for all steps that come after the moved step — warn the user they may need to re-test those steps.',
+    schema: s.object('MoveStepInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID to move'),
+      afterStepId: s.string(
+        'The step ID to place the moved step immediately after. ' +
+        'Pass the trigger step ID to move this step to position 1.',
+      ),
+    }),
+    handler: async (input) => {
+      const workflow = this.workflowService
+        .workflows()
+        .find((w) => w.id === input.workflowId);
+      if (!workflow) return { success: false, error: 'Workflow not found' };
+
+      const steps = workflow.steps;
+      const fromIdx = steps.findIndex((s) => s.id === input.stepId);
+      const anchorIdx = steps.findIndex((s) => s.id === input.afterStepId);
+
+      if (fromIdx < 0) return { success: false, error: 'Step not found' };
+      if (fromIdx === 0) return { success: false, error: 'Cannot move the trigger step' };
+      if (anchorIdx < 0) return { success: false, error: 'afterStepId not found' };
+
+      // Target index is after the anchor, adjusted for the removal of the source item
+      const toIdx = anchorIdx < fromIdx ? anchorIdx + 1 : anchorIdx;
+
+      if (toIdx === fromIdx) return { success: true, message: 'Step is already in that position' };
+      if (toIdx === 0) return { success: false, error: 'Cannot displace the trigger step' };
+
+      await this.workflowService.reorderSteps(input.workflowId, fromIdx, toIdx);
+      await this.workflowService.save(input.workflowId);
+      return { success: true };
+    },
+  });
+
+  private readonly clearStepConfigTool = createTool({
+    name: 'clear_step_config',
+    description:
+      'Clear the configuration of a step, resetting it to an unconfigured blank slot ' +
+      'without removing it from the workflow. ' +
+      'Use this when you want to REPLACE what a step does (change its app/component) ' +
+      'rather than deleting it entirely. After clearing, call configure_step on the same step ID ' +
+      'to assign a new app and component. ' +
+      'Also clears the step\'s outputSnapshot — downstream steps that referenced it will need re-testing.',
+    schema: s.object('ClearStepConfigInput', {
+      workflowId: s.string('The workflow ID'),
+      stepId: s.string('The step ID to clear'),
+      stepName: s.string('Human readable name of the step'),
+    }),
+    handler: async (input) => {
+      this.workflowService.configureStep(input.workflowId, input.stepId, null);
+      await this.workflowService.save(input.workflowId);
+      return { success: true, stepId: input.stepId };
     },
   });
 
@@ -612,6 +685,8 @@ Respond with a structured review.`,
     this.getActiveWorkflowTool,
     this.createWorkflowTool,
     this.addStepTool,
+    this.moveStepTool,
+    this.clearStepConfigTool,
     this.listComponentsTool,
     this.configureStepTool,
     this.setStepPropsTool,
@@ -654,7 +729,9 @@ Respond with a structured review.`,
               Client-side tools for building and managing workflows:
               - get_active_workflow — get the current workflow with all its steps and output schemas
               - create_workflow — create a new workflow with a name
-              - add_workflow_step — add a step to a workflow
+              - add_workflow_step — add a step; pass afterStepId to insert at a position, omit to append
+              - move_workflow_step — move an existing step to a different position by step ID
+              - clear_step_config — reset a step's component without removing it (use before re-configuring)
               - list_app_components — discover correct component keys for an app
               - configure_step — configure a step with a Pipedream app and component
               - set_step_props — set property values on a configured step
@@ -785,6 +862,63 @@ Respond with a structured review.`,
               11. Call review_workflow with the user's original intent to catch any issues before finishing.
               12. Show a summary using the workflow-suggestion-card component.
             </building_sequence>
+
+            <workflow_editing>
+              When the user asks to EDIT an existing workflow:
+
+              <inserting_steps>
+                To insert a step between two existing steps:
+                1. Call add_workflow_step with afterStepId set to the step BEFORE the desired position.
+                2. The new step lands immediately after that step.
+                3. Configure it with configure_step + set_step_props as normal.
+                4. Any steps after the new one may need re-testing if they reference prior step outputs.
+              </inserting_steps>
+
+              <replacing_a_step>
+                To change what a step does (swap its app/component) without removing it:
+                1. Call clear_step_config on the step — it resets to a blank slot, stays in position.
+                2. Call configure_step on the same step ID with the new component.
+                3. Call set_step_props for the new configuration.
+                4. All downstream steps that referenced the old step's outputs MUST be re-tested —
+                   warn the user and offer to re-test them.
+
+                Do NOT do remove_workflow_step + add_workflow_step when the user just wants to
+                change a step's app — clear_step_config keeps the step in place.
+              </replacing_a_step>
+
+              <reordering_steps>
+                To move a step to a different position:
+                1. Call move_workflow_step with the stepId and the afterStepId of the step
+                   it should come after.
+                2. To move a step to position 1 (right after the trigger), pass the trigger
+                   step ID as afterStepId.
+                3. Warn the user: any step whose inputs referenced the moved step, or whose
+                   position in the execution order changed relative to its dependencies,
+                   may need re-testing.
+              </reordering_steps>
+
+              <cascading_invalidation>
+                When any of the following happens, downstream step snapshots become stale:
+                - A step's props change (set_step_props)
+                - A step is replaced (clear_step_config + configure_step)
+                - A step is inserted or removed before downstream steps
+                - A step is moved
+
+                After edits, call get_active_workflow to see which steps still have
+                outputSnapshot. Proactively warn the user which steps will need re-testing
+                and offer to run them.
+              </cascading_invalidation>
+
+              <reconfiguring_trigger>
+                To change the trigger:
+                1. Call configure_step on the trigger step ID (index 0).
+                2. If the trigger changes and the workflow is published, the backend
+                   automatically unpublishes it — tell the user they'll need to publish again.
+                3. Call set_step_props to update trigger-specific props.
+                4. If the trigger type changed, the trigger's outputSnapshot is stale —
+                   render pd-try-trigger so the user can capture a fresh sample event.
+              </reconfiguring_trigger>
+            </workflow_editing>
           </workflow_building>
 
           <step_references>
@@ -820,6 +954,31 @@ Respond with a structured review.`,
               WITHOUT testing:
               ${this.buildTriggerSchemaPrompt()}
             </trigger_schemas>
+
+            <trigger_sample_event>
+              The trigger step (index 0) must sometimes provide a sample event
+              before you can configure downstream action steps — especially when
+              a step references {{steps.trigger.event.*}} paths and the trigger
+              is NOT a known schedule type with a built-in schema.
+
+              When you need a trigger sample event and one is not already present
+              in the step's outputSnapshot:
+              1. Render a pd-try-trigger component, passing the workflowId.
+              2. Tell the user: "I need a sample event from your trigger so I know
+                 what data it produces. Click Try Now and I'll continue once it's
+                 captured."
+              3. STOP and wait. The component will send you a reply automatically
+                 when the user clicks the button and the capture succeeds.
+              4. After receiving the success reply, call get_active_workflow to
+                 read the updated trigger outputSnapshot and proceed.
+
+              For known schedule triggers the schema is embedded in this prompt —
+              you do NOT need a sample event for those.
+
+              Do NOT call test_step on the trigger step. Do NOT ask the user to
+              "publish" the workflow to get a sample event — pd-try-trigger works
+              without publishing.
+            </trigger_sample_event>
 
             <action_output_discovery>
               Trigger steps (index 0) are automatically marked as ready when
@@ -877,6 +1036,18 @@ Respond with a structured review.`,
             input: {
               workflowId: s.string('The workflow ID'),
               stepId: s.string('The step ID being configured'),
+            },
+          }),
+          exposeComponent(TryTriggerComponent, {
+            description:
+              'Show a "Try Now" button that captures a sample event from the workflow trigger. ' +
+              'Use this when you need trigger output data to configure downstream action steps ' +
+              'and the trigger outputSnapshot is not yet available. ' +
+              'Works without publishing the workflow. ' +
+              'After the user clicks it, the component automatically sends a confirmation message ' +
+              'so you can continue building.',
+            input: {
+              workflowId: s.string('The workflow ID'),
             },
           }),
         ],

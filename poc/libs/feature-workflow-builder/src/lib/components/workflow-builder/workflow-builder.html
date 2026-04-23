@@ -179,6 +179,27 @@
                 />
               }
 
+              <!-- Try Now — available for configured trigger steps, with or without publishing -->
+              @if (selectedStep()?.type === 'trigger') {
+                <div class="pd-test-step-section">
+                  <button
+                    type="button"
+                    class="pd-btn pd-btn--primary"
+                    [disabled]="tryingTrigger()"
+                    (click)="tryTrigger()"
+                  >
+                    @if (tryingTrigger()) { Capturing event… } @else { ▶ Try Now }
+                  </button>
+                  @if (tryTriggerError()) {
+                    <small class="pd-test-status pd-test-status--error">{{ tryTriggerError() }}</small>
+                  }
+                  @if (tryTriggerJson(); as json) {
+                    <small class="pd-test-status pd-test-status--ok">✓ Sample event captured</small>
+                    <pre class="pd-test-event-json">{{ json }}</pre>
+                  }
+                </div>
+              }
+
               <!-- Generate Test Event — only for the trigger step when published -->
               @if (selectedStep()?.type === 'trigger' && isPublished()) {
                 <div class="pd-test-step-section">

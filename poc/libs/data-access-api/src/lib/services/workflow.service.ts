@@ -93,18 +93,22 @@ export class WorkflowService {
 
   // ── Step management ───────────────────────────────────────────────────────
 
-  addStep(workflowId: string): WorkflowStep {
+  addStep(workflowId: string, afterStepId?: string): WorkflowStep {
     const step: WorkflowStep = {
       id: generateId(),
       type: 'action',
       data: null,
     };
     this._workflows.update((list) =>
-      list.map((w) =>
-        w.id === workflowId
-          ? { ...w, steps: [...w.steps, step] }
-          : w,
-      ),
+      list.map((w) => {
+        if (w.id !== workflowId) return w;
+        if (!afterStepId) return { ...w, steps: [...w.steps, step] };
+        const idx = w.steps.findIndex((s) => s.id === afterStepId);
+        if (idx < 0) return { ...w, steps: [...w.steps, step] };
+        const steps = [...w.steps];
+        steps.splice(idx + 1, 0, step);
+        return { ...w, steps };
+      }),
     );
     this._dirty.set(true);
     return step;
@@ -269,6 +273,24 @@ export class WorkflowService {
 
   async listTriggerEvents(id: string, n = 10): Promise<{ events: unknown[] }> {
     return this.api.listTriggerEvents(id, n);
+  }
+
+  async tryTrigger(workflowId: string): Promise<{ success: boolean; error: string | null }> {
+    try {
+      const result = await this.api.tryTrigger(workflowId);
+      // Persist the snapshot on the trigger step in local state
+      const workflow = this._workflows().find((w) => w.id === workflowId);
+      const triggerStep = workflow?.steps[0];
+      if (triggerStep) {
+        this.setStepSnapshot(workflowId, triggerStep.id, result.snapshot);
+      }
+      return { success: true, error: null };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   async emitTestEvent(id: string): Promise<{ event: unknown }> {
