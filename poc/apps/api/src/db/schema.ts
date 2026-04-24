@@ -48,6 +48,23 @@ export const executionRuns = sqliteTable('execution_runs', {
   error: text('error'),
 });
 
+// ── Trigger Events ───────────────────────────────────────────────────────────
+
+// Captured sample events for a workflow's trigger. Keyed on (workflowId,
+// triggerKey) where triggerKey is the Pipedream component key (e.g.
+// "gmail-new-email"). Events from a previous trigger component are kept but
+// marked stale when the trigger component changes.
+export const triggerEvents = sqliteTable('trigger_events', {
+  id: text('id').primaryKey(),
+  workflowId: text('workflow_id')
+    .notNull()
+    .references(() => workflows.id, { onDelete: 'cascade' }),
+  triggerKey: text('trigger_key').notNull(),
+  event: text('event').notNull(),            // JSON
+  capturedAt: text('captured_at').notNull(), // ISO 8601
+  isStale: integer('is_stale', { mode: 'boolean' }).notNull().default(false),
+});
+
 // Each ExecutionStepResult is its own row — output is JSON, everything else is scalar.
 export const executionStepResults = sqliteTable('execution_step_results', {
   id: integer('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
