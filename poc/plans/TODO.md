@@ -10,6 +10,12 @@
 <!-- 3. have a place to manage connected accounts -->
 - prevent repitive tool calls if LLM goes into a loop? maybe validate it's not called more than N times?
 - add an ability to review mid-process
+- add autosave with debounce, make sure we always use the workflow from the response
+- additional suggestions for the selected action? e.g. if openai we would want to always use "chat"
+- add conditions (like if/then or split)
+- how "generate test event" play along with already published trigger?
+- try now vs emit test event in the trigger?
+
 
 Bugs:
 <!-- 1. when account is disconnected, it's not reflected in the workflow -->

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { ENV_VARS } from '../env-vars';
 import type { Workflow, WorkflowStep } from '../models/workflow.model';
+import { validatePropTypes } from '@poc/shared';
 import {
   listWorkflows,
   getWorkflow,
@@ -217,6 +218,26 @@ workflows.put('/:id', async (c) => {
     }
 
     workflow.steps = invalidateStaleSnapshots(workflow.steps, updates.steps);
+
+    // Validate configured prop types for every Pipedream step.
+    const propErrors: string[] = [];
+    for (const step of updates.steps) {
+      const d = step.data as {
+        source?: string;
+        configuredProps?: Record<string, unknown>;
+        component?: { configurableProps?: Array<{ name: string; type?: string }> };
+      };
+      if (d.source !== 'pipedream' || !d.configuredProps || !d.component?.configurableProps) {
+        continue;
+      }
+      const result = validatePropTypes(d.configuredProps, d.component.configurableProps);
+      if (!result.valid) {
+        propErrors.push(`Step "${step.id}": ${result.message}`);
+      }
+    }
+    if (propErrors.length > 0) {
+      return c.json({ error: propErrors.join('\n\n') }, 400);
+    }
   }
 
   workflow.updatedAt = new Date().toISOString();

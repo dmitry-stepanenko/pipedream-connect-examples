@@ -19,6 +19,7 @@ import { ConnectAppComponent } from './connect-app.component';
 import { TryTriggerComponent } from './components/try-trigger.component';
 import { PropOption, PropOptionValue } from '@pipedream/sdk';
 import { validateStepReferences } from './step-reference.utils';
+import { validatePropTypes } from '@poc/shared';
 import { WorkflowSuggestionCard } from './components/workflow-suggestions-card.component';
 
 export class AIChatDefinition {
@@ -248,7 +249,9 @@ export class AIChatDefinition {
     description:
       'Set property values on an already-configured workflow step. Call this AFTER ' +
       "configure_step to fill in the step's required and optional properties. " +
-      'You can call this multiple times to update props incrementally.',
+      'You can call this multiple times to update props incrementally. ' +
+      'Use the "type" field from configure_step allProperties to determine what value to pass — ' +
+      'the value type must match exactly or the call will be rejected.',
     schema: s.object('SetStepPropsInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to set properties on'),
@@ -265,6 +268,7 @@ export class AIChatDefinition {
               s.string('String value for string props'),
               s.number('Numeric value for number/integer props'),
               s.boolean('Boolean value for boolean props'),
+              s.array('Array value for string[] or array props', s.string('Array item')),
             ]),
           },
         ),
@@ -277,10 +281,10 @@ export class AIChatDefinition {
       error: string | null;
       configuredProps: Record<string, unknown> | null;
     }> => {
-      const props: Record<string, PropOptionValue> = {};
+      const props: Record<string, PropOptionValue | string[]> = {};
       for (const entry of input.props as {
         name: string;
-        value: string | number | boolean;
+        value: string | number | boolean | string[];
       }[]) {
         props[entry.name] = entry.value;
       }
@@ -313,6 +317,14 @@ export class AIChatDefinition {
           error: `Unknown properties: ${unknown.join(', ')}. Only use names from configure_step's allProperties list.`,
           configuredProps: null,
         };
+      }
+
+      const typeValidation = validatePropTypes(
+        props,
+        (current.component.configurableProps ?? []) as Array<{ name: string; type?: string }>,
+      );
+      if (!typeValidation.valid) {
+        return { success: false, error: typeValidation.message ?? '', configuredProps: null };
       }
 
       const refCheck = validateStepReferences(props, workflow.steps);
@@ -350,7 +362,7 @@ export class AIChatDefinition {
           );
 
           const validValues = options.map((o) => o.value);
-          if (validValues.length > 0 && !validValues.includes(val)) {
+          if (validValues.length > 0 && !Array.isArray(val) && !validValues.includes(val)) {
             return {
               success: false,
               error:
