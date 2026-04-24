@@ -3,15 +3,7 @@ import { DatePipe, JsonPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatTabsModule } from '@angular/material/tabs';
 import { WorkflowService } from '@poc/data-access-api';
-
-interface DeployedTrigger {
-  id: string;
-  type: string;
-  createdAt?: number;
-  updatedAt?: number;
-  workflow?: { id: string; name: string };
-  [key: string]: unknown;
-}
+import type { Workflow, PipedreamStep } from '@poc/data-access-api';
 
 interface ExecutionStepResult {
   componentKey: string;
@@ -42,33 +34,36 @@ export class DeployedTriggersPageComponent {
   private readonly workflowService = inject(WorkflowService);
   private readonly router = inject(Router);
 
-  protected openWorkflow(trigger: DeployedTrigger) {
-    if (!trigger.workflow) return;
-    this.workflowService.setActiveWorkflow(trigger.workflow.id);
+  protected openWorkflow(workflow: Workflow) {
+    this.workflowService.setActiveWorkflow(workflow.id);
     this.router.navigate(['/workflows']);
   }
 
-  protected readonly COMMON_KEYS = new Set(['id', 'type', 'createdAt', 'updatedAt', 'workflow']);
-
-  protected extraProps(trigger: DeployedTrigger): [string, unknown][] {
-    return Object.entries(trigger).filter(([k]) => !this.COMMON_KEYS.has(k));
+  protected triggerInfo(workflow: Workflow): { name: string; app: string } | null {
+    const step = workflow.steps[0];
+    if (!step?.data || step.data.source !== 'pipedream') return null;
+    const d = step.data as PipedreamStep;
+    return {
+      name: d.component.name ?? d.component.key,
+      app: d.app.name ?? d.app.nameSlug,
+    };
   }
 
-  protected readonly triggersResource = resource({
+  protected readonly workflowsResource = resource({
     loader: async () => {
-      const res = await this.workflowService.listDeployedTriggers();
-      return res.triggers as DeployedTrigger[];
+      const res = await this.workflowService.listPublishedWorkflows();
+      return res.workflows;
     },
   });
 
-  // ── Expand / collapse trigger ────────────────────────────────────────────
+  // ── Expand / collapse workflow ────────────────────────────────────────────
 
-  protected readonly expandedTriggerId = signal<string | null>(null);
+  protected readonly expandedWorkflowId = signal<string | null>(null);
 
-  protected toggleExpanded(trigger: DeployedTrigger) {
-    const next = this.expandedTriggerId() === trigger.id ? null : trigger.id;
-    this.expandedTriggerId.set(next);
-    if (next && trigger.workflow) this.ensureRunsLoaded(trigger);
+  protected toggleExpanded(workflow: Workflow) {
+    const next = this.expandedWorkflowId() === workflow.id ? null : workflow.id;
+    this.expandedWorkflowId.set(next);
+    if (next) this.ensureRunsLoaded(workflow);
   }
 
   // ── Runs ─────────────────────────────────────────────────────────────────
@@ -77,23 +72,20 @@ export class DeployedTriggersPageComponent {
   protected readonly runsMap = signal<Record<string, ExecutionRun[]>>({});
   protected readonly runsError = signal<Record<string, string>>({});
 
-  private ensureRunsLoaded(trigger: DeployedTrigger) {
-    if (!trigger.workflow) return;
-    if (this.runsMap()[trigger.workflow.id]) return;
-    this.loadRuns(trigger);
+  private ensureRunsLoaded(workflow: Workflow) {
+    if (this.runsMap()[workflow.id]) return;
+    this.loadRuns(workflow);
   }
 
-  protected async loadRuns(trigger: DeployedTrigger) {
-    if (!trigger.workflow) return;
-    const workflowId = trigger.workflow.id;
-    this.runsLoading.set(trigger.id);
-    this.runsError.update((m) => { const n = { ...m }; delete n[trigger.id]; return n; });
+  protected async loadRuns(workflow: Workflow) {
+    this.runsLoading.set(workflow.id);
+    this.runsError.update((m) => { const n = { ...m }; delete n[workflow.id]; return n; });
     try {
-      const res = await this.workflowService.listRuns(workflowId, 20);
-      this.runsMap.update((m) => ({ ...m, [workflowId]: res.runs as ExecutionRun[] }));
+      const res = await this.workflowService.listRuns(workflow.id, 20);
+      this.runsMap.update((m) => ({ ...m, [workflow.id]: res.runs as ExecutionRun[] }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.runsError.update((m) => ({ ...m, [trigger.id]: msg }));
+      this.runsError.update((m) => ({ ...m, [workflow.id]: msg }));
     } finally {
       this.runsLoading.set(null);
     }

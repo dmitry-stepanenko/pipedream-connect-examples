@@ -6,27 +6,38 @@
 
   <div class="pd-event-picker__list">
     @for (ev of events(); track ev.id) {
-      <label class="pd-event-picker__item" [class.pd-event-picker__item--selected]="selectedId() === ev.id">
-        <input
-          type="radio"
-          name="pd-event"
-          [value]="ev.id"
-          [checked]="selectedId() === ev.id"
-          (change)="select(ev.id)"
-        />
-        <span class="pd-event-picker__time">{{ ev.capturedAt | date:'short' }}</span>
-        @if (ev.isStale) {
-          <span class="pd-event-picker__stale">⚠ stale</span>
+      <div class="pd-event-picker__item" [class.pd-event-picker__item--selected]="selectedId() === ev.id">
+        <label class="pd-event-picker__row">
+          <input
+            type="radio"
+            name="pd-event"
+            [value]="ev.id"
+            [checked]="selectedId() === ev.id"
+            (change)="select(ev.id)"
+          />
+          <span class="pd-event-picker__time">{{ ev.capturedAt | date:'short' }}</span>
+          @if (ev.isStale) {
+            <span class="pd-event-picker__stale">⚠ stale</span>
+          }
+          <button
+            class="!flex !items-center !justify-center"
+            mat-icon-button
+            (click)="toggleExpand(ev.id)"
+            [attr.aria-label]="expandedId() === ev.id ? 'Collapse event' : 'Expand event'"
+          >{{ expandedId() === ev.id ? '▾' : '▸' }}</button>
+        </label>
+        @if (expandedId() === ev.id) {
+          <pre class="pd-event-picker__json">{{ ev.event | json }}</pre>
         }
-      </label>
+      </div>
     }
   </div>
 
   <div class="pd-dialog__actions">
-    <button type="button" class="pd-btn pd-btn--ghost" (click)="cancel()">Cancel</button>
+    <button mat-button (click)="cancel()">Cancel</button>
     <button
-      type="button"
-      class="pd-btn pd-btn--primary"
+      mat-flat-button
+      color="primary"
       [disabled]="!selectedId() || running()"
       (click)="confirm()"
     >

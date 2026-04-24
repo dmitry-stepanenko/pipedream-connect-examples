@@ -168,6 +168,17 @@ code.pd-meta-value {
 .pd-run-status--error   { background: #fee2e2; color: #991b1b; }
 .pd-run-status--running { background: #dbeafe; color: #1d4ed8; }
 
+.pd-run-source {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+}
+
+.pd-run-source--pipedream { background: #ede9fe; color: #6d28d9; }
+.pd-run-source--custom    { background: #fef3c7; color: #92400e; }
+.pd-run-source--test      { background: #f1f5f9; color: #475569; }
+
 .pd-run-ts { color: #6b7280; flex: 1; }
 .pd-chevron { color: #9ca3af; font-size: 0.7rem; }
 

@@ -1,101 +1,99 @@
 <div class="pd-triggers-page">
   <div class="pd-triggers-header">
-    <h2 class="pd-triggers-title">Deployed Triggers</h2>
+    <h2 class="pd-triggers-title">Published Workflows</h2>
     <button
       type="button"
       class="pd-btn pd-btn--ghost"
-      [disabled]="triggersResource.isLoading()"
-      (click)="triggersResource.reload()"
+      [disabled]="workflowsResource.isLoading()"
+      (click)="workflowsResource.reload()"
     >
-      @if (triggersResource.isLoading()) { Loading… } @else { Refresh }
+      @if (workflowsResource.isLoading()) { Loading… } @else { Refresh }
     </button>
   </div>
 
-  @if (triggersResource.error()) {
-    @if (triggersResource.isLoading()) {
+  @if (workflowsResource.error()) {
+    @if (workflowsResource.isLoading()) {
       <p class="pd-empty">Retrying…</p>
     } @else {
       <p class="pd-error">
-        Failed to load triggers.
-        <button type="button" class="pd-btn-link" (click)="triggersResource.reload()">Retry</button>
+        Failed to load workflows.
+        <button type="button" class="pd-btn-link" (click)="workflowsResource.reload()">Retry</button>
       </p>
     }
-  } @else if (triggersResource.isLoading() && !triggersResource.value()?.length) {
-    <p class="pd-empty">Loading triggers…</p>
-  } @else if (!triggersResource.value()?.length) {
-    <p class="pd-empty">No deployed triggers found.</p>
+  } @else if (workflowsResource.isLoading() && !workflowsResource.value()?.length) {
+    <p class="pd-empty">Loading workflows…</p>
+  } @else if (!workflowsResource.value()?.length) {
+    <p class="pd-empty">No published workflows found.</p>
   } @else {
     <div class="pd-triggers-list">
-      @for (trigger of triggersResource.value()!; track trigger.id) {
+      @for (workflow of workflowsResource.value()!; track workflow.id) {
         <div class="pd-trigger-card">
           <div class="pd-trigger-row">
             <div class="pd-trigger-main">
               <div class="pd-trigger-identity">
-                <span class="pd-trigger-name">{{ trigger.type }}</span>
+                <span class="pd-trigger-name">{{ workflow.name }}</span>
               </div>
               <div class="pd-trigger-meta">
-                <span class="pd-meta-item">
-                  <span class="pd-meta-label">ID</span>
-                  <code class="pd-meta-value">{{ trigger.id }}</code>
-                </span>
-                @if (trigger.createdAt) {
+                @if (triggerInfo(workflow); as info) {
                   <span class="pd-meta-item">
-                    <span class="pd-meta-label">Deployed</span>
-                    <span class="pd-meta-value">{{ trigger.createdAt * 1000 | date:'mediumDate' }}</span>
+                    <span class="pd-meta-label">Trigger</span>
+                    <span class="pd-meta-value">{{ info.app }} · {{ info.name }}</span>
                   </span>
                 }
-                @for (entry of extraProps(trigger); track entry[0]) {
+                @if (workflow.deployedTriggerId) {
                   <span class="pd-meta-item">
-                    <span class="pd-meta-label">{{ entry[0] }}</span>
-                    <code class="pd-meta-value">{{ entry[1] }}</code>
+                    <span class="pd-meta-label">ID</span>
+                    <code class="pd-meta-value">{{ workflow.deployedTriggerId }}</code>
+                  </span>
+                }
+                @if (workflow.updatedAt) {
+                  <span class="pd-meta-item">
+                    <span class="pd-meta-label">Published</span>
+                    <span class="pd-meta-value">{{ workflow.updatedAt | date:'mediumDate' }}</span>
                   </span>
                 }
               </div>
             </div>
             <div class="pd-trigger-actions">
-              @if (trigger.workflow) {
-                <button
-                  type="button"
-                  class="pd-btn pd-btn--ghost pd-btn--sm"
-                  (click)="openWorkflow(trigger)"
-                >
-                  Open: {{ trigger.workflow.name }}
-                </button>
-              }
               <button
                 type="button"
                 class="pd-btn pd-btn--ghost pd-btn--sm"
-                (click)="toggleExpanded(trigger)"
+                (click)="openWorkflow(workflow)"
               >
-                @if (expandedTriggerId() === trigger.id) { Hide Runs } @else { View Runs }
+                Open
+              </button>
+              <button
+                type="button"
+                class="pd-btn pd-btn--ghost pd-btn--sm"
+                (click)="toggleExpanded(workflow)"
+              >
+                @if (expandedWorkflowId() === workflow.id) { Hide Runs } @else { View Runs }
               </button>
             </div>
           </div>
 
-          @if (expandedTriggerId() === trigger.id) {
+          @if (expandedWorkflowId() === workflow.id) {
             <div class="pd-details-panel">
               <div class="pd-runs-header">
                 <button
                   type="button"
                   class="pd-btn-link"
-                  [disabled]="runsLoading() === trigger.id"
-                  (click)="loadRuns(trigger)"
+                  [disabled]="runsLoading() === workflow.id"
+                  (click)="loadRuns(workflow)"
                 >
-                  @if (runsLoading() === trigger.id) { Loading… } @else { Refresh }
+                  @if (runsLoading() === workflow.id) { Loading… } @else { Refresh }
                 </button>
               </div>
 
-              @if (runsError()[trigger.id]) {
-                <p class="pd-error pd-error--padded">{{ runsError()[trigger.id] }}</p>
-              } @else if (!trigger.workflow) {
-                <p class="pd-empty pd-empty--padded">No associated workflow.</p>
-              } @else if (runsLoading() === trigger.id && !runsMap()[trigger.workflow.id]) {
+              @if (runsError()[workflow.id]) {
+                <p class="pd-error pd-error--padded">{{ runsError()[workflow.id] }}</p>
+              } @else if (runsLoading() === workflow.id && !runsMap()[workflow.id]) {
                 <p class="pd-empty pd-empty--padded">Loading runs…</p>
-              } @else if (!runsMap()[trigger.workflow.id]?.length) {
+              } @else if (!runsMap()[workflow.id]?.length) {
                 <p class="pd-empty pd-empty--padded">No runs yet.</p>
               } @else {
                 <div class="pd-runs-list">
-                  @for (run of runsMap()[trigger.workflow.id]; track run.id) {
+                  @for (run of runsMap()[workflow.id]; track run.id) {
                     <div class="pd-run-card">
                       <button
                         type="button"
@@ -103,6 +101,7 @@
                         (click)="toggleRun(run.id)"
                       >
                         <span class="pd-run-status pd-run-status--{{ run.status }}">{{ run.status }}</span>
+                        <span class="pd-run-source pd-run-source--{{ run.triggerSource }}">{{ run.triggerSource }}</span>
                         <span class="pd-run-ts">{{ run.startedAt | date:'medium' }}</span>
                         <span class="pd-chevron">{{ expandedRunId() === run.id ? '▾' : '▸' }}</span>
                       </button>

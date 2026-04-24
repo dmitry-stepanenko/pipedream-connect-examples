@@ -4,7 +4,7 @@ import {
   DragDropModule,
 } from '@angular/cdk/drag-drop';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
+import { DatePipe, JsonPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import type { ConfiguredProps } from '@pipedream/sdk';
 import { WorkflowService } from '@poc/data-access-api';
@@ -23,6 +23,7 @@ import { slugFromKey, enumeratePaths } from '../chat-panel/step-reference.utils'
     DragDropModule,
     FormsModule,
     DatePipe,
+    JsonPipe,
     RouterLink,
     WorkflowStepComponent,
     StepPickerComponent,
@@ -54,6 +55,7 @@ export class WorkflowBuilderComponent {
   protected readonly captureError = signal<string | null>(null);
   protected readonly testRunDialogOpen = signal(false);
   protected readonly selectedEventId = signal<string | null>(null);
+  protected readonly expandedEventId = signal<string | null>(null);
 
   protected readonly runsSummary = resource({
     loader: async () => {

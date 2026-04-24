@@ -134,19 +134,11 @@ export class WorkflowApiService {
     return res.json();
   }
 
-  async listDeployedTriggers(): Promise<{ triggers: unknown[] }> {
+  async listPublishedWorkflows(): Promise<{ workflows: Workflow[] }> {
     const res = await fetch(
       `${this.baseUrl}/deployed-triggers?externalUserId=${encodeURIComponent(this.userId)}`,
     );
-    if (!res.ok) throw new Error(`Failed to list deployed triggers: ${res.status}`);
-    return res.json();
-  }
-
-  async getDeployedTriggerEvents(triggerId: string, n = 20): Promise<{ events: unknown[] }> {
-    const res = await fetch(
-      `${this.baseUrl}/deployed-triggers/${encodeURIComponent(triggerId)}/events?externalUserId=${encodeURIComponent(this.userId)}&n=${n}`,
-    );
-    if (!res.ok) throw new Error(`Failed to fetch trigger events: ${res.status}`);
+    if (!res.ok) throw new Error(`Failed to list published workflows: ${res.status}`);
     return res.json();
   }
 

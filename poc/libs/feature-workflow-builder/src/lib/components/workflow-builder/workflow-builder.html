@@ -202,19 +202,35 @@
                 </div>
 
                 <!-- Event history -->
-                @if (workflowService.triggerEvents().length) {
-                  <div class="pd-event-list">
-                    @for (ev of workflowService.triggerEvents(); track ev.id) {
-                      <div class="pd-event-item" [class.pd-event-item--stale]="ev.isStale">
-                        <span class="pd-event-item__time">{{ ev.capturedAt | date:'short' }}</span>
-                        @if (ev.isStale) {
-                          <span class="pd-event-item__stale-badge">stale</span>
-                        }
-                        <button class="pd-btn-link" (click)="useEvent(ev)">Use</button>
-                      </div>
-                    }
+                <div class="pd-trigger-events-section">
+                  <div class="pd-trigger-events-header">
+                    <span class="pd-trigger-events-title">Captured Events</span>
                   </div>
-                }
+                  @if (!workflowService.triggerEvents().length) {
+                    <p class="pd-trigger-events-empty">No events yet. Click Capture Event to record one.</p>
+                  } @else {
+                    <div class="pd-trigger-events-list">
+                      @for (ev of workflowService.triggerEvents(); track ev.id) {
+                        <div class="pd-trigger-event-item">
+                          <button
+                            type="button"
+                            class="pd-trigger-event-summary"
+                            (click)="expandedEventId.set(expandedEventId() === ev.id ? null : ev.id)"
+                          >
+                            <span class="pd-trigger-event-ts">{{ ev.capturedAt | date:'short' }}</span>
+                            @if (ev.isStale) {
+                              <span class="pd-event-item__stale-badge">stale</span>
+                            }
+                            <span class="pd-trigger-event-chevron">{{ expandedEventId() === ev.id ? '▾' : '▸' }}</span>
+                          </button>
+                          @if (expandedEventId() === ev.id) {
+                            <pre class="pd-trigger-event-json">{{ ev.event | json }}</pre>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
               }
 
               <!-- Runs summary — only for the trigger step when published -->

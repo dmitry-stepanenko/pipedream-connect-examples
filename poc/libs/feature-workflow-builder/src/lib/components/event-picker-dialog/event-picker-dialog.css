@@ -32,26 +32,36 @@
   flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
+  max-height: 420px;
+  overflow-y: auto;
 }
 
 .pd-event-picker__item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
   border: 1px solid var(--pd-border, #e2e8f0);
   border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.pd-event-picker__item:hover {
-  background: var(--pd-surface-hover, #f8fafc);
+  overflow: hidden;
+  transition: border-color 0.15s;
 }
 
 .pd-event-picker__item--selected {
   border-color: var(--pd-accent, #6366f1);
+}
+
+.pd-event-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  background: var(--pd-surface, #fff);
+}
+
+.pd-event-picker__item--selected .pd-event-picker__row {
   background: var(--pd-accent-light, #eef2ff);
+}
+
+.pd-event-picker__row:hover {
+  background: var(--pd-surface-hover, #f8fafc);
 }
 
 .pd-event-picker__time {
@@ -62,6 +72,27 @@
 .pd-event-picker__stale {
   font-size: 0.75rem;
   color: var(--pd-warning, #d97706);
+}
+
+.pd-event-picker__expand {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  padding: 0 0.25rem;
+  flex-shrink: 0;
+}
+
+.pd-event-picker__json {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: #f8fafc;
+  border-top: 1px solid var(--pd-border, #e2e8f0);
+  font-size: 0.72rem;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre;
 }
 
 .pd-dialog__actions {

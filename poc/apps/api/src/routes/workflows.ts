@@ -7,7 +7,6 @@ import {
   getWorkflow,
   saveWorkflow,
   deleteWorkflow,
-  getWorkflowsByDeployedTriggerIds,
 } from '../services/workflow-store';
 import {
   publishWorkflow,
@@ -114,68 +113,17 @@ workflows.post('/', async (c) => {
   return c.json({ workflow }, 201);
 });
 
-// List all deployed triggers for a user (must be before /:id to avoid route shadowing)
+// List all published workflows for a user (must be before /:id to avoid route shadowing)
 workflows.get('/deployed-triggers', async (c) => {
   const externalUserId = c.req.query('externalUserId');
   if (!externalUserId) {
     return c.json({ error: 'externalUserId required' }, 400);
   }
 
-  try {
-    const db = createDb(c.env.DB);
-    const pd = createPipedreamClient(c.env);
-
-    const responses = await Promise.all(
-      (['source', 'timer', 'http', 'email'] as const).map((emitterType) =>
-        pd.deployedTriggers.list({ externalUserId, emitterType }),
-      ),
-    );
-
-    const triggerIds = responses
-      .flatMap((r) => (r as { data?: unknown[] }).data ?? [])
-      .map((t) => (t as Record<string, unknown>)['id'] as string)
-      .filter(Boolean);
-
-    const matchedWorkflows = await getWorkflowsByDeployedTriggerIds(db, triggerIds);
-
-    const workflowByTriggerId = Object.fromEntries(
-      matchedWorkflows.map((w) => [w.deployedTriggerId, { id: w.id, name: w.name }]),
-    );
-
-    const triggers = responses
-      .flatMap((r) => (r as { data?: unknown[] }).data ?? [])
-      .map((t) => {
-        const trigger = t as Record<string, unknown>;
-        const workflow = workflowByTriggerId[trigger['id'] as string];
-        return workflow ? { ...trigger, workflow } : trigger;
-      });
-
-    return c.json({ triggers });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 400);
-  }
-});
-
-// List recent events for a specific deployed trigger
-workflows.get('/deployed-triggers/:triggerId/events', async (c) => {
-  const externalUserId = c.req.query('externalUserId');
-  const n = Math.min(parseInt(c.req.query('n') ?? '20', 10), 100);
-  if (!externalUserId) {
-    return c.json({ error: 'externalUserId required' }, 400);
-  }
-
-  try {
-    const pd = createPipedreamClient(c.env);
-    const res = await pd.deployedTriggers.listEvents(c.req.param('triggerId'), {
-      externalUserId,
-      n,
-    });
-    return c.json({ events: (res as any).data ?? [] });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 400);
-  }
+  const db = createDb(c.env.DB);
+  const all = await listWorkflows(db, externalUserId);
+  const published = all.filter((w) => w.status === 'published');
+  return c.json({ workflows: published });
 });
 
 // Get single workflow
