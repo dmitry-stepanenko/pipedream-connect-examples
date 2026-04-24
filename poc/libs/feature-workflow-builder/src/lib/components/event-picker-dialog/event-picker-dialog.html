@@ -1,0 +1,36 @@
+<div class="pd-dialog-backdrop" (click)="cancel()"></div>
+<div class="pd-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-event-picker-title">
+  <h3 class="pd-dialog__title" id="pd-event-picker-title">
+    Select an event to run the workflow with
+  </h3>
+
+  <div class="pd-event-picker__list">
+    @for (ev of events(); track ev.id) {
+      <label class="pd-event-picker__item" [class.pd-event-picker__item--selected]="selectedId() === ev.id">
+        <input
+          type="radio"
+          name="pd-event"
+          [value]="ev.id"
+          [checked]="selectedId() === ev.id"
+          (change)="select(ev.id)"
+        />
+        <span class="pd-event-picker__time">{{ ev.capturedAt | date:'short' }}</span>
+        @if (ev.isStale) {
+          <span class="pd-event-picker__stale">⚠ stale</span>
+        }
+      </label>
+    }
+  </div>
+
+  <div class="pd-dialog__actions">
+    <button type="button" class="pd-btn pd-btn--ghost" (click)="cancel()">Cancel</button>
+    <button
+      type="button"
+      class="pd-btn pd-btn--primary"
+      [disabled]="!selectedId() || running()"
+      (click)="confirm()"
+    >
+      @if (running()) { Running… } @else { Run Workflow → }
+    </button>
+  </div>
+</div>

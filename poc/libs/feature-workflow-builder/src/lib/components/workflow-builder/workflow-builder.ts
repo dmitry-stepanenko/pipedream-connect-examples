@@ -8,11 +8,12 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import type { ConfiguredProps } from '@pipedream/sdk';
 import { WorkflowService } from '@poc/data-access-api';
-import type { WorkflowStepData, PipedreamStep, CustomTriggerStep } from '@poc/data-access-api';
+import type { WorkflowStepData, PipedreamStep, CustomTriggerStep, WorkflowStep, TriggerEvent } from '@poc/data-access-api';
 import { CUSTOM_TRIGGERS, ComponentFormComponent } from '@poc/connect-angular';
 import { WorkflowStepComponent } from '../workflow-step/workflow-step';
 import { StepPickerComponent } from '../step-picker/step-picker';
 import { ChatPanelComponent } from '../chat-panel/chat-panel';
+import { EventPickerDialogComponent } from '../event-picker-dialog/event-picker-dialog';
 import { slugFromKey, enumeratePaths } from '../chat-panel/step-reference.utils';
 
 @Component({
@@ -27,6 +28,7 @@ import { slugFromKey, enumeratePaths } from '../chat-panel/step-reference.utils'
     StepPickerComponent,
     ComponentFormComponent,
     ChatPanelComponent,
+    EventPickerDialogComponent,
   ],
   templateUrl: './workflow-builder.html',
   styleUrl: './workflow-builder.css',
@@ -47,13 +49,11 @@ export class WorkflowBuilderComponent {
   protected readonly triggerError = signal<string | null>(null);
   protected readonly triggerResults = signal<unknown[] | null>(null);
 
-  protected readonly emittingTestEvent = signal(false);
-  protected readonly testEventError = signal<string | null>(null);
-  protected readonly testEventJson = signal<string | null>(null);
-
-  protected readonly tryingTrigger = signal(false);
-  protected readonly tryTriggerError = signal<string | null>(null);
-  protected readonly tryTriggerJson = signal<string | null>(null);
+  protected readonly capturingEvent = signal(false);
+  protected readonly captureCountdown = signal<number | null>(null);
+  protected readonly captureError = signal<string | null>(null);
+  protected readonly testRunDialogOpen = signal(false);
+  protected readonly selectedEventId = signal<string | null>(null);
 
   protected readonly runsSummary = resource({
     loader: async () => {
@@ -134,6 +134,11 @@ export class WorkflowBuilderComponent {
   protected selectStep(stepId: string) {
     this.selectedStepId.set(stepId);
     this.panelTab.set('details');
+    const step = this.workflowService.activeSteps().find((s) => s.id === stepId);
+    if (step?.type === 'trigger') {
+      const w = this.workflow;
+      if (w) void this.workflowService.loadTriggerEvents(w.id);
+    }
   }
 
   protected async addStep() {
@@ -152,7 +157,7 @@ export class WorkflowBuilderComponent {
     this.workflowService.removeStep(w.id, stepId);
   }
 
-  protected onDrop(event: CdkDragDrop<any[]>) {
+  protected onDrop(event: CdkDragDrop<WorkflowStep[]>) {
     const w = this.workflow;
     if (!w) return;
     if (event.currentIndex === 0 && event.previousIndex !== 0) return;
@@ -256,51 +261,64 @@ export class WorkflowBuilderComponent {
   protected async triggerWorkflow() {
     const w = this.workflow;
     if (!w) return;
+    const eventId = this.selectedEventId();
+    if (!eventId) return;
     this.triggering.set(true);
     this.triggerError.set(null);
     this.triggerResults.set(null);
     try {
-      const res = await this.workflowService.triggerWorkflow(w.id);
+      const res = await this.workflowService.testRun(w.id, eventId);
       const run = res.run as { steps?: unknown[] };
       this.triggerResults.set(run?.steps ?? null);
     } catch (err) {
       this.triggerError.set(err instanceof Error ? err.message : String(err));
     } finally {
       this.triggering.set(false);
+      this.testRunDialogOpen.set(false);
+      this.selectedEventId.set(null);
     }
   }
 
-  protected async emitTestEvent() {
+  protected openTestRunDialog() {
+    this.selectedEventId.set(null);
+    this.testRunDialogOpen.set(true);
+  }
+
+  protected closeTestRunDialog() {
+    this.testRunDialogOpen.set(false);
+    this.selectedEventId.set(null);
+  }
+
+  protected useEvent(ev: TriggerEvent) {
     const w = this.workflow;
     if (!w) return;
-    this.emittingTestEvent.set(true);
-    this.testEventError.set(null);
-    this.testEventJson.set(null);
+    this.workflowService.setActiveTriggerEvent(w.id, ev);
+  }
+
+  protected async captureEvent() {
+    const w = this.workflow;
+    if (!w) return;
+    const timeoutMs = 90_000;
+    this.capturingEvent.set(true);
+    this.captureCountdown.set(timeoutMs / 1000);
+    this.captureError.set(null);
+
+    const timer = setInterval(() => {
+      this.captureCountdown.update((v) => (v !== null && v > 0 ? v - 1 : 0));
+    }, 1000);
+
     try {
-      const res = await this.workflowService.emitTestEvent(w.id);
-      this.testEventJson.set(JSON.stringify(res.event, null, 2));
-    } catch (err) {
-      this.testEventError.set(err instanceof Error ? err.message : String(err));
+      const result = await this.workflowService.captureEvent(w.id, timeoutMs);
+      if (!result.success) {
+        this.captureError.set(result.error);
+      } else {
+        await this.workflowService.loadTriggerEvents(w.id);
+      }
     } finally {
-      this.emittingTestEvent.set(false);
+      clearInterval(timer);
+      this.capturingEvent.set(false);
+      this.captureCountdown.set(null);
     }
-  }
-
-  protected async tryTrigger() {
-    const w = this.workflow;
-    if (!w) return;
-    this.tryingTrigger.set(true);
-    this.tryTriggerError.set(null);
-    this.tryTriggerJson.set(null);
-    const result = await this.workflowService.tryTrigger(w.id);
-    if (result.success) {
-      const step = this.workflowService.activeSteps()[0];
-      const snapshot = step?.outputSnapshot;
-      this.tryTriggerJson.set(snapshot ? JSON.stringify(snapshot.$return_value, null, 2) : null);
-    } else {
-      this.tryTriggerError.set(result.error);
-    }
-    this.tryingTrigger.set(false);
   }
 
   protected async unpublish() {

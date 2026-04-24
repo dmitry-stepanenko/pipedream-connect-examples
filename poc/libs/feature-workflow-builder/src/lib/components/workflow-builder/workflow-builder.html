@@ -51,15 +51,17 @@
               @if (saving()) { Saving… } @else { Save }
             </button>
           }
-          @if (isPublished()) {
+          @if (workflowService.triggerEvents().length > 0) {
             <button
               type="button"
               class="pd-btn pd-btn--secondary"
               [disabled]="triggering()"
-              (click)="triggerWorkflow()"
+              (click)="openTestRunDialog()"
             >
               @if (triggering()) { Running... } @else { ▶ Test Run }
             </button>
+          }
+          @if (isPublished()) {
             <button
               type="button"
               class="pd-btn pd-btn--ghost"
@@ -179,48 +181,40 @@
                 />
               }
 
-              <!-- Try Now — available for configured trigger steps, with or without publishing -->
+              <!-- Capture Event — available for configured trigger steps -->
               @if (selectedStep()?.type === 'trigger') {
                 <div class="pd-test-step-section">
                   <button
                     type="button"
                     class="pd-btn pd-btn--primary"
-                    [disabled]="tryingTrigger()"
-                    (click)="tryTrigger()"
+                    [disabled]="capturingEvent()"
+                    (click)="captureEvent()"
                   >
-                    @if (tryingTrigger()) { Capturing event… } @else { ▶ Try Now }
+                    @if (capturingEvent()) {
+                      Capturing… {{ captureCountdown() }}s
+                    } @else {
+                      ⏺ Capture Event
+                    }
                   </button>
-                  @if (tryTriggerError()) {
-                    <small class="pd-test-status pd-test-status--error">{{ tryTriggerError() }}</small>
-                  }
-                  @if (tryTriggerJson(); as json) {
-                    <small class="pd-test-status pd-test-status--ok">✓ Sample event captured</small>
-                    <pre class="pd-test-event-json">{{ json }}</pre>
+                  @if (captureError()) {
+                    <small class="pd-test-status pd-test-status--error">{{ captureError() }}</small>
                   }
                 </div>
-              }
 
-              <!-- Generate Test Event — only for the trigger step when published -->
-              @if (selectedStep()?.type === 'trigger' && isPublished()) {
-                <div class="pd-test-step-section">
-                  <button
-                    type="button"
-                    class="pd-btn pd-btn--secondary"
-                    [disabled]="emittingTestEvent()"
-                    (click)="emitTestEvent()"
-                  >
-                    @if (emittingTestEvent()) { Generating… } @else { ⚡ Generate Test Event }
-                  </button>
-                  @if (testEventError()) {
-                    <small class="pd-test-status pd-test-status--error">{{ testEventError() }}</small>
-                  }
-                  @if (testEventJson(); as json) {
-                    <pre class="pd-test-event-json">{{ json }}</pre>
-                  }
-                  <small class="pd-trigger-id">
-                    Deployed trigger: <code>{{ workflow.deployedTriggerId }}</code>
-                  </small>
-                </div>
+                <!-- Event history -->
+                @if (workflowService.triggerEvents().length) {
+                  <div class="pd-event-list">
+                    @for (ev of workflowService.triggerEvents(); track ev.id) {
+                      <div class="pd-event-item" [class.pd-event-item--stale]="ev.isStale">
+                        <span class="pd-event-item__time">{{ ev.capturedAt | date:'short' }}</span>
+                        @if (ev.isStale) {
+                          <span class="pd-event-item__stale-badge">stale</span>
+                        }
+                        <button class="pd-btn-link" (click)="useEvent(ev)">Use</button>
+                      </div>
+                    }
+                  </div>
+                }
               }
 
               <!-- Runs summary — only for the trigger step when published -->
@@ -294,4 +288,14 @@
       </div>
     </div>
   </div>
+
+  <!-- Event Picker Dialog -->
+  @if (testRunDialogOpen()) {
+    <pd-event-picker-dialog
+      [events]="workflowService.triggerEvents()"
+      [running]="triggering()"
+      (confirmed)="selectedEventId.set($event); triggerWorkflow()"
+      (cancelled)="closeTestRunDialog()"
+    />
+  }
 }

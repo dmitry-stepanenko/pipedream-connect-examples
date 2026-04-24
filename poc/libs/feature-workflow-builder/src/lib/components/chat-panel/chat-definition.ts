@@ -16,7 +16,7 @@ import {
 } from '../../models/trigger-schemas';
 import { MarkdownComponent } from '@poc/ui-chat-elements';
 import { ConnectAppComponent } from './connect-app.component';
-import { TryTriggerComponent } from './components/try-trigger.component';
+import { CaptureEventComponent } from './components/capture-event.component';
 import { PropOption, PropOptionValue } from '@pipedream/sdk';
 import { validateStepReferences } from './step-reference.utils';
 import { validatePropTypes } from '@poc/shared';
@@ -192,11 +192,9 @@ export class AIChatDefinition {
 
       await this.workflowService.save(input.workflowId);
 
-      // For known trigger types, fetch and store a synthetic sample snapshot so
-      // the trigger step is immediately marked as tested and the LLM has real
-      // event paths to reference when configuring downstream steps.
+      // For known trigger types, the static trigger schema embedded in the system
+      // prompt is sufficient — the AI can reference event paths without a sample.
       if (triggerSchema) {
-        await this.workflowService.refreshTriggerSnapshot(input.workflowId);
         await this.workflowService.save(input.workflowId);
       }
 
@@ -383,13 +381,10 @@ export class AIChatDefinition {
       });
       await this.workflowService.save(input.workflowId);
 
-      // If props were updated on the trigger step, refresh its snapshot so
-      // the sample event reflects the new cron/timezone configuration.
+      // If props were updated on the trigger step, the user can re-capture an
+      // event via the Capture Event button to get an updated sample.
       const stepIndex = workflow.steps.findIndex((s) => s.id === input.stepId);
-      if (stepIndex === 0) {
-        await this.workflowService.refreshTriggerSnapshot(input.workflowId);
-        await this.workflowService.save(input.workflowId);
-      }
+      void stepIndex;
 
       return {
         success: true,
@@ -928,7 +923,7 @@ Respond with a structured review.`,
                    automatically unpublishes it — tell the user they'll need to publish again.
                 3. Call set_step_props to update trigger-specific props.
                 4. If the trigger type changed, the trigger's outputSnapshot is stale —
-                   render pd-try-trigger so the user can capture a fresh sample event.
+                   render pd-capture-event so the user can capture a fresh sample event.
               </reconfiguring_trigger>
             </workflow_editing>
           </workflow_building>
@@ -975,9 +970,9 @@ Respond with a structured review.`,
 
               When you need a trigger sample event and one is not already present
               in the step's outputSnapshot:
-              1. Render a pd-try-trigger component, passing the workflowId.
+              1. Render a pd-capture-event component, passing the workflowId.
               2. Tell the user: "I need a sample event from your trigger so I know
-                 what data it produces. Click Try Now and I'll continue once it's
+                 what data it produces. Click Capture Event and I'll continue once it's
                  captured."
               3. STOP and wait. The component will send you a reply automatically
                  when the user clicks the button and the capture succeeds.
@@ -988,7 +983,7 @@ Respond with a structured review.`,
               you do NOT need a sample event for those.
 
               Do NOT call test_step on the trigger step. Do NOT ask the user to
-              "publish" the workflow to get a sample event — pd-try-trigger works
+              "publish" the workflow to get a sample event — pd-capture-event works
               without publishing.
             </trigger_sample_event>
 
@@ -1050,9 +1045,9 @@ Respond with a structured review.`,
               stepId: s.string('The step ID being configured'),
             },
           }),
-          exposeComponent(TryTriggerComponent, {
+          exposeComponent(CaptureEventComponent, {
             description:
-              'Show a "Try Now" button that captures a sample event from the workflow trigger. ' +
+              'Show a "Capture Event" button that captures a sample event from the workflow trigger. ' +
               'Use this when you need trigger output data to configure downstream action steps ' +
               'and the trigger outputSnapshot is not yet available. ' +
               'Works without publishing the workflow. ' +

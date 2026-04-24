@@ -5,6 +5,7 @@ import type {
   WorkflowStepData,
   StepOutputSchema,
   StepSnapshot,
+  TriggerEvent,
 } from '../workflow.model';
 import { WorkflowApiService } from './workflow-api.service';
 
@@ -30,6 +31,7 @@ export class WorkflowService {
   private readonly _activeWorkflowId = signal<string | null>(null);
   private readonly _loading = signal(false);
   private readonly _dirty = signal(false);
+  readonly triggerEvents = signal<TriggerEvent[]>([]);
 
   // ── Selectors ─────────────────────────────────────────────────────────────
 
@@ -259,42 +261,58 @@ export class WorkflowService {
     return workflow;
   }
 
-  async refreshTriggerSnapshot(workflowId: string): Promise<void> {
+  setActiveTriggerEvent(workflowId: string, event: TriggerEvent): void {
     const workflow = this._workflows().find((w) => w.id === workflowId);
     const triggerStep = workflow?.steps[0];
     if (!triggerStep) return;
-    try {
-      const snapshot = await this.api.getTriggerSnapshot(workflowId);
-      this.setStepSnapshot(workflowId, triggerStep.id, snapshot);
-    } catch {
-      // Not all trigger types support synthetic snapshots — fail silently
-    }
+    this.setStepSnapshot(workflowId, triggerStep.id, {
+      $return_value: event.event,
+      exports: {},
+    });
   }
 
-  async listTriggerEvents(id: string, n = 10): Promise<{ events: unknown[] }> {
-    return this.api.listTriggerEvents(id, n);
-  }
-
-  async tryTrigger(workflowId: string): Promise<{ success: boolean; error: string | null }> {
+  async captureEvent(
+    workflowId: string,
+    timeoutMs: number,
+  ): Promise<{ success: boolean; event: TriggerEvent | null; error: string | null }> {
     try {
-      const result = await this.api.tryTrigger(workflowId);
-      // Persist the snapshot on the trigger step in local state
+      const { event } = await this.api.captureEvent(workflowId, timeoutMs);
+      // Patch trigger step snapshot with the captured event payload
       const workflow = this._workflows().find((w) => w.id === workflowId);
       const triggerStep = workflow?.steps[0];
       if (triggerStep) {
-        this.setStepSnapshot(workflowId, triggerStep.id, result.snapshot);
+        const snapshot: StepSnapshot = {
+          $return_value: event.event,
+          exports: {},
+        };
+        this.setStepSnapshot(workflowId, triggerStep.id, snapshot);
       }
-      return { success: true, error: null };
+      // Prepend to local event list
+      this.triggerEvents.update((evts) => [event, ...evts]);
+      return { success: true, event, error: null };
     } catch (err: unknown) {
       return {
         success: false,
+        event: null,
         error: err instanceof Error ? err.message : String(err),
       };
     }
   }
 
-  async emitTestEvent(id: string): Promise<{ event: unknown }> {
-    return this.api.emitTestEvent(id);
+  async loadTriggerEvents(workflowId: string): Promise<void> {
+    try {
+      const { events } = await this.api.listTriggerEvents(workflowId);
+      this.triggerEvents.set(events);
+    } catch (err) {
+      console.error('Failed to load trigger events:', err);
+    }
+  }
+
+  async testRun(
+    workflowId: string,
+    eventId: string,
+  ): Promise<{ run: unknown }> {
+    return this.api.testRun(workflowId, eventId);
   }
 
   async listDeployedTriggers(): Promise<{ triggers: unknown[] }> {
@@ -303,10 +321,6 @@ export class WorkflowService {
 
   async getDeployedTriggerEvents(triggerId: string): Promise<{ events: unknown[] }> {
     return this.api.getDeployedTriggerEvents(triggerId);
-  }
-
-  async triggerWorkflow(id: string): Promise<{ run: unknown }> {
-    return this.api.triggerWorkflow(id);
   }
 
   async listRuns(id: string, limit = 20): Promise<{ runs: unknown[] }> {

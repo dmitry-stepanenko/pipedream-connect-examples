@@ -1,0 +1,71 @@
+.pd-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.pd-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 101;
+  background: var(--pd-surface, #fff);
+  border: 1px solid var(--pd-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-width: 360px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.pd-dialog__title {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pd-event-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.pd-event-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--pd-border, #e2e8f0);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pd-event-picker__item:hover {
+  background: var(--pd-surface-hover, #f8fafc);
+}
+
+.pd-event-picker__item--selected {
+  border-color: var(--pd-accent, #6366f1);
+  background: var(--pd-accent-light, #eef2ff);
+}
+
+.pd-event-picker__time {
+  flex: 1;
+  font-size: 0.875rem;
+}
+
+.pd-event-picker__stale {
+  font-size: 0.75rem;
+  color: var(--pd-warning, #d97706);
+}
+
+.pd-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

@@ -75,3 +75,18 @@ export interface Workflow {
   createdAt: string; // ISO date string
   updatedAt: string;
 }
+
+// ── Trigger Events ────────────────────────────────────────────────────────────
+
+/** A captured sample event from a workflow's trigger. */
+export interface TriggerEvent {
+  id: string;
+  workflowId: string;
+  /** Pipedream component key, e.g. "gmail-new-email". Stable across republishing. */
+  triggerKey: string;
+  /** The raw event payload. */
+  event: Record<string, unknown>;
+  capturedAt: string; // ISO 8601
+  /** True when captured from a different trigger component than the current one. */
+  isStale: boolean;
+}
