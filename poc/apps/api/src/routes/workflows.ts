@@ -178,8 +178,8 @@ workflows.put('/:id', async (c) => {
         source?: string;
         configuredProps?: Record<string, unknown>;
         component?: { configurableProps?: Array<{ name: string; type?: string }> };
-      };
-      if (d.source !== 'pipedream' || !d.configuredProps || !d.component?.configurableProps) {
+      }
+      if (!d || d.source !== 'pipedream' || !d.configuredProps || !d.component?.configurableProps) {
         continue;
       }
       const result = validatePropTypes(d.configuredProps, d.component.configurableProps);

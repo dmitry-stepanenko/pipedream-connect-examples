@@ -1,14 +1,19 @@
-import { inject, Injector, runInInjectionContext } from '@angular/core';
+import {
+  inject,
+  Injector,
+  runInInjectionContext,
+} from '@angular/core';
 import {
   exposeComponent,
   uiChatResource,
   createTool,
   type UiChatResourceRef,
 } from '@hashbrownai/angular';
+import { createHttpTransport } from '@hashbrownai/core';
 import { type Chat, prompt, s } from '@hashbrownai/core';
 import { PipedreamMcpService, WorkflowService } from '@poc/data-access-api';
 import { PipedreamClientService, CUSTOM_TRIGGERS } from '@poc/connect-angular';
-import { AiStructuredCompletionService } from '@poc/data-access-structured-completion';
+import { AiStructuredCompletionService, ChatProviderService } from '@poc/data-access-structured-completion';
 import type { PipedreamStep, StepOutputSchema } from '@poc/data-access-api';
 import {
   getTriggerSchema,
@@ -22,12 +27,14 @@ import { validateStepReferences } from './step-reference.utils';
 import { validatePropTypes } from '@poc/shared';
 import { WorkflowSuggestionCard } from './components/workflow-suggestions-card.component';
 
+
 export class AIChatDefinition {
   private readonly injector = inject(Injector);
   private readonly mcpService = inject(PipedreamMcpService);
   private readonly pdClient = inject(PipedreamClientService);
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
+  private readonly providerService = inject(ChatProviderService);
   private readonly completionService = inject(AiStructuredCompletionService);
 
   private readonly createWorkflowTool = createTool({
@@ -47,7 +54,7 @@ export class AIChatDefinition {
     name: 'add_workflow_step',
     description:
       'Add a new action step to the workflow. ' +
-      'Pass afterStepId to insert it immediately after a specific step (by that step\'s ID). ' +
+      "Pass afterStepId to insert it immediately after a specific step (by that step's ID). " +
       'Omit afterStepId to append it at the end. ' +
       'The trigger step (index 0) cannot be used as afterStepId to insert at position 1 — just omit afterStepId and reorder afterward if needed. ' +
       'Returns the new step ID.',
@@ -61,7 +68,8 @@ export class AIChatDefinition {
     handler: async (input) => {
       const afterStepId = (input as { afterStepId?: string }).afterStepId;
       const step = this.workflowService.addStep(input.workflowId, afterStepId);
-      await this.workflowService.save(input.workflowId);
+      // Do NOT save here — configure_step always saves after configuring the step,
+      // so we avoid persisting an unconfigured (data: null) step to the backend.
       return { stepId: step.id };
     },
   });
@@ -80,7 +88,7 @@ export class AIChatDefinition {
       stepId: s.string('The step ID to move'),
       afterStepId: s.string(
         'The step ID to place the moved step immediately after. ' +
-        'Pass the trigger step ID to move this step to position 1.',
+          'Pass the trigger step ID to move this step to position 1.',
       ),
     }),
     handler: async (input) => {
@@ -94,14 +102,18 @@ export class AIChatDefinition {
       const anchorIdx = steps.findIndex((s) => s.id === input.afterStepId);
 
       if (fromIdx < 0) return { success: false, error: 'Step not found' };
-      if (fromIdx === 0) return { success: false, error: 'Cannot move the trigger step' };
-      if (anchorIdx < 0) return { success: false, error: 'afterStepId not found' };
+      if (fromIdx === 0)
+        return { success: false, error: 'Cannot move the trigger step' };
+      if (anchorIdx < 0)
+        return { success: false, error: 'afterStepId not found' };
 
       // Target index is after the anchor, adjusted for the removal of the source item
       const toIdx = anchorIdx < fromIdx ? anchorIdx + 1 : anchorIdx;
 
-      if (toIdx === fromIdx) return { success: true, message: 'Step is already in that position' };
-      if (toIdx === 0) return { success: false, error: 'Cannot displace the trigger step' };
+      if (toIdx === fromIdx)
+        return { success: true, message: 'Step is already in that position' };
+      if (toIdx === 0)
+        return { success: false, error: 'Cannot displace the trigger step' };
 
       await this.workflowService.reorderSteps(input.workflowId, fromIdx, toIdx);
       await this.workflowService.save(input.workflowId);
@@ -117,7 +129,7 @@ export class AIChatDefinition {
       'Use this when you want to REPLACE what a step does (change its app/component) ' +
       'rather than deleting it entirely. After clearing, call configure_step on the same step ID ' +
       'to assign a new app and component. ' +
-      'Also clears the step\'s outputSnapshot — downstream steps that referenced it will need re-testing.',
+      "Also clears the step's outputSnapshot — downstream steps that referenced it will need re-testing.",
     schema: s.object('ClearStepConfigInput', {
       workflowId: s.string('The workflow ID'),
       stepId: s.string('The step ID to clear'),
@@ -149,12 +161,30 @@ export class AIChatDefinition {
       ),
     }),
     handler: async (input) => {
+      const workflow = this.workflowService
+        .workflows()
+        .find((w) => w.id === input.workflowId);
+      if (!workflow) return { success: false, error: 'Workflow not found' };
+      const stepExists = workflow.steps.some((s) => s.id === input.stepId);
+      if (!stepExists)
+        return {
+          success: false,
+          error: `Step '${input.stepId}' not found in workflow`,
+        };
+
       const [appResponse, componentResponse] = await Promise.all([
         this.pdClient.getApp(input.appSlug),
         this.pdClient.getComponent(input.componentKey),
       ]);
       const app = appResponse.data;
       const component = componentResponse.data;
+      if (!app)
+        return { success: false, error: `App '${input.appSlug}' not found` };
+      if (!component)
+        return {
+          success: false,
+          error: `Component '${input.componentKey}' not found`,
+        };
       const data: PipedreamStep = {
         source: 'pipedream',
         app,
@@ -266,7 +296,10 @@ export class AIChatDefinition {
               s.string('String value for string props'),
               s.number('Numeric value for number/integer props'),
               s.boolean('Boolean value for boolean props'),
-              s.array('Array value for string[] or array props', s.string('Array item')),
+              s.array(
+                'Array value for string[] or array props',
+                s.string('Array item'),
+              ),
             ]),
           },
         ),
@@ -319,10 +352,17 @@ export class AIChatDefinition {
 
       const typeValidation = validatePropTypes(
         props,
-        (current.component.configurableProps ?? []) as Array<{ name: string; type?: string }>,
+        (current.component.configurableProps ?? []) as Array<{
+          name: string;
+          type?: string;
+        }>,
       );
       if (!typeValidation.valid) {
-        return { success: false, error: typeValidation.message ?? '', configuredProps: null };
+        return {
+          success: false,
+          error: typeValidation.message ?? '',
+          configuredProps: null,
+        };
       }
 
       const refCheck = validateStepReferences(props, workflow.steps);
@@ -360,7 +400,11 @@ export class AIChatDefinition {
           );
 
           const validValues = options.map((o) => o.value);
-          if (validValues.length > 0 && !Array.isArray(val) && !validValues.includes(val)) {
+          if (
+            validValues.length > 0 &&
+            !Array.isArray(val) &&
+            !validValues.includes(val)
+          ) {
             return {
               success: false,
               error:
@@ -707,12 +751,12 @@ Respond with a structured review.`,
 
   // ── Chat lifecycle ──────────────────────────────────────────────────────
 
-  initChat(
-    messages?: Chat.Message<any, any>[],
-  ): UiChatResourceRef<any> {
+  initChat(messages?: Chat.Message<any, any>[]): UiChatResourceRef<any> {
     return runInInjectionContext(this.injector, () => {
+      const provider = this.providerService.active();
       return uiChatResource({
-        model: 'gpt-4o@2025-01-01-preview',
+        model: provider.model,
+        transport: createHttpTransport({ baseUrl: provider.baseUrl }),
         debugName: 'workflow-chat',
         messages,
         system: prompt`

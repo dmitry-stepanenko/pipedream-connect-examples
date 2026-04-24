@@ -70,7 +70,8 @@ export class ComposerComponent {
     });
     f.controls.message.setValue(
       // `I need a workflow that on schedule sends "hello" to my slack "General" channel at 9 a.m. every Monday`
-      `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them with chat gpt and sends a short report as a slack message`,
+      // `I need a workflow that on schedule fetches my google calendar events for the current week, summarizes all of them with chat gpt and sends a short report as a slack message`,
+      `I need a workflow that reacts every time I get a new email received to my gmail, I want to respond to the sender with a funny ai generated message`,
     );
     return f;
   }

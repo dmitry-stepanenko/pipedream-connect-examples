@@ -9,11 +9,12 @@ import {
   untracked,
   type WritableSignal,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { type UiChatResourceRef } from '@hashbrownai/angular';
 import { type Chat } from '@hashbrownai/core';
 import { PipedreamMcpService, WorkflowService } from '@poc/data-access-api';
 import { PipedreamClientService, CUSTOM_TRIGGERS } from '@poc/connect-angular';
-import { AiStructuredCompletionService } from '@poc/data-access-structured-completion';
+import { AiStructuredCompletionService, ChatProviderService } from '@poc/data-access-structured-completion';
 import { provideMarkdown } from 'ngx-markdown';
 import {
   ComposerComponent,
@@ -28,7 +29,7 @@ import { AIChatDefinition } from './chat-definition';
 @Component({
   selector: 'pd-chat-panel',
   standalone: true,
-  imports: [MessagesComponent, ComposerComponent],
+  imports: [MessagesComponent, ComposerComponent, FormsModule],
   providers: [
     provideMarkdown(),
     {
@@ -41,6 +42,22 @@ import { AIChatDefinition } from './chat-definition';
   ],
   template: `
     <div class="pd-chat-panel">
+      @if (!chat().value()?.length) {
+        <div class="pd-chat-provider-bar">
+          <label class="pd-chat-provider-label" for="pd-provider-select">Provider</label>
+          <select
+            id="pd-provider-select"
+            class="pd-chat-provider-select"
+            [ngModel]="providerService.key()"
+            (ngModelChange)="onProviderChange($event)"
+          >
+            @for (entry of providerService.providerEntries; track entry.key) {
+              <option [value]="entry.key">{{ entry.name }}</option>
+            }
+          </select>
+        </div>
+      }
+
       <div class="pd-chat-messages">
         <esp-hb-ai-assistant-chat-messages
           class="max-h-full overflow-auto"
@@ -70,6 +87,7 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly workflowService = inject(WorkflowService);
   private readonly customTriggers = inject(CUSTOM_TRIGGERS);
   private readonly completionService = inject(AiStructuredCompletionService);
+  readonly providerService = inject(ChatProviderService);
 
   readonly toolMetadata = computed<ChatToolMetadata>(() => ({
     create_workflow: {
@@ -250,5 +268,10 @@ export class ChatPanelComponent implements AfterViewInit {
 
   retryMessages() {
     this.chat().resendMessages();
+  }
+
+  onProviderChange(key: string) {
+    this.providerService.setProvider(key);
+    this.resetChat();
   }
 }

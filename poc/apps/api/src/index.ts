@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { PipedreamClient } from '@pipedream/sdk/server';
 import { HashbrownAzure } from '@hashbrownai/azure';
+import { HashbrownOpenAI } from '@hashbrownai/openai';
 import type { Chat } from '@hashbrownai/core';
 import type { ENV_VARS } from './env-vars';
 import { configureCors } from './utils/util-cors';
@@ -67,9 +68,9 @@ app.post('/api/pipedream/token', async (c) => {
   }
 });
 
-// ── Hashbrown chat endpoint (LLM proxy) ────────────────────────────────────
+// ── Hashbrown chat endpoint — Azure OpenAI ────────────────────────────────
 
-app.post('/api/chat', async (c) => {
+app.post('/api/chat-azure', async (c) => {
   const { AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT } = c.env;
 
   if (!AZURE_OPENAI_API_KEY || !AZURE_OPENAI_ENDPOINT) {
@@ -86,6 +87,41 @@ app.post('/api/chat', async (c) => {
     apiKey: AZURE_OPENAI_API_KEY,
     endpoint: AZURE_OPENAI_ENDPOINT,
     request: completionParams as any,
+  });
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of response) {
+          controller.enqueue(chunk);
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/octet-stream' },
+  });
+});
+
+// ── Hashbrown chat endpoint — OpenAI ──────────────────────────────────────
+
+app.post('/api/chat-openai', async (c) => {
+  const { OPENAI_API_KEY } = c.env;
+  console.log({OPENAI_API_KEY});
+
+  if (!OPENAI_API_KEY) {
+    return c.json({ error: 'OPENAI_API_KEY not configured' }, 500);
+  }
+
+  const completionParams =
+    (await c.req.json()) as Chat.Api.CompletionCreateParams;
+
+  const response = HashbrownOpenAI.stream.text({
+    apiKey: OPENAI_API_KEY,
+    request: completionParams,
   });
 
   const stream = new ReadableStream({

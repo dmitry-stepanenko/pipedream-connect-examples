@@ -7,6 +7,22 @@ import { PIPEDREAM_CONFIG } from '@poc/connect-angular';
 
 const TOOL_TIMEOUT_MS = 180_000; // 3 minutes, matching Pipedream reference
 
+// OpenAI strict mode rejects $schema and open-dictionary object properties
+// (type=object with no sub-properties). Strip both; the remaining MCP schemas
+// are already strict-compliant (they include additionalProperties:false and required).
+function cleanMcpSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const { properties, ...rest } = schema as Record<string, unknown> & { properties?: Record<string, Record<string, unknown>> };
+  delete rest['$schema'];
+
+  if (!properties) return rest;
+
+  const cleanedProps = Object.fromEntries(
+    Object.entries(properties).filter(([, prop]) => !(prop['type'] === 'object' && !prop['properties'])),
+  );
+
+  return { ...rest, properties: cleanedProps };
+}
+
 @Injectable({ providedIn: 'root' })
 export class PipedreamMcpService {
   private readonly config = inject(PIPEDREAM_CONFIG);
@@ -52,19 +68,14 @@ export class PipedreamMcpService {
     if (!this.client) return;
 
     const { tools: mcpTools } = await this.client.listTools();
+    console.log(JSON.parse(JSON.stringify({mcpTools})));
 
     const tools = mcpTools.map((tool) => {
       return runInInjectionContext(this.injector, () => {
         return createTool({
           name: tool.name,
           description: tool.description ?? '',
-          schema: {
-            ...tool.inputSchema,
-            additionalProperties: false,
-            ...(tool.inputSchema.required
-              ? { required: tool.inputSchema.required }
-              : {}),
-          },
+          schema: cleanMcpSchema(tool.inputSchema),
           handler: async (input) => {
             const result = await this.executeTool(tool.name, input);
             // Refresh tools after each call — Pipedream MCP changes available

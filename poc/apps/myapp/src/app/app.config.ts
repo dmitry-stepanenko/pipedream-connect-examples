@@ -7,7 +7,9 @@ import {
 import type { CustomTrigger } from '@poc/connect-angular';
 import { provideHashbrown } from '@hashbrownai/angular';
 import { environment } from '../environments/environment';
+import { CHAT_PROVIDERS } from './chat-config';
 import { appRoutes } from './app.routes';
+import { CHAT_PROVIDERS_MAP } from '@poc/data-access-structured-completion';
 
 // -- Sample custom triggers -----------------------------------------------
 // Replace with your real internal business events.
@@ -83,6 +85,9 @@ export const appConfig: ApplicationConfig = {
       externalUserId: 'demo-user-1',
     }),
     provideCustomTriggers(customTriggers),
-    provideHashbrown({ baseUrl: `${environment.apiUrl}/api/chat` }),
+    // provideHashbrown sets up the global hashbrown DI token; we override transport
+    // per-resource in chat-definition.ts using the active ChatProviderService entry.
+    provideHashbrown({ baseUrl: `${environment.apiUrl}/api/chat-azure` }),
+    { provide: CHAT_PROVIDERS_MAP, useValue: CHAT_PROVIDERS },
   ],
 };

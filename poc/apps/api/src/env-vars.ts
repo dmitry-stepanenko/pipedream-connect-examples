@@ -5,6 +5,7 @@ export type ENV_VARS = {
   PIPEDREAM_PROJECT_ENVIRONMENT?: string;
   AZURE_OPENAI_API_KEY?: string;
   AZURE_OPENAI_ENDPOINT?: string;
+  OPENAI_API_KEY?: string;
   MCP_SERVER?: string;
   ALLOWED_CORS_ORIGINS?: string;
   DB: D1Database;

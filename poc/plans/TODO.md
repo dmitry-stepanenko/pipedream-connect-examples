@@ -13,9 +13,9 @@
 - add autosave with debounce, make sure we always use the workflow from the response
 - additional suggestions for the selected action? e.g. if openai we would want to always use "chat"
 - add conditions (like if/then or split)
-- how "generate test event" play along with already published trigger?
-- try now vs emit test event in the trigger?
-- we can see triggers on a separate page, but we may have events separately? should we display this somehow?
+<!-- - how "generate test event" play along with already published trigger? -->
+<!-- - try now vs emit test event in the trigger? -->
+<!-- - we can see triggers on a separate page, but we may have events separately? should we display this somehow? -->
 
 Bugs:
 <!-- 1. when account is disconnected, it's not reflected in the workflow -->
@@ -32,6 +32,6 @@ we need to be able to resolve interpolation in fields. I'd like to
 1. show an object with all possible values. when you click on a certain property, it's path gets injected in the field
 2. validate interpolation in the ui
  -->
- - reorder steps
- - other triggers
+ <!-- - reorder steps
+ - other triggers -->
  - review should self heal the workflow

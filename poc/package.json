@@ -16,6 +16,7 @@
     "@angular/router": "~21.2.0",
     "@hashbrownai/angular": "^0.4.1",
     "@hashbrownai/azure": "^0.4.1",
+    "@hashbrownai/openai": "^0.4.1",
     "@hashbrownai/core": "^0.4.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@pipedream/sdk": "^2.4.4",

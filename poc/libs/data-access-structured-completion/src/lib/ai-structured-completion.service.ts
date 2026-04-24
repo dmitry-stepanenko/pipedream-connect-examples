@@ -7,8 +7,9 @@ import {
   signal,
 } from '@angular/core';
 import { structuredCompletionResource } from '@hashbrownai/angular';
+import { createHttpTransport } from '@hashbrownai/core';
 import type { s, TransportOrFactory } from '@hashbrownai/core';
-
+import { ChatProviderService } from './chat-provider.service';
 
 export interface AiStructuredCompletionOptions<
   Input,
@@ -21,8 +22,7 @@ export interface AiStructuredCompletionOptions<
   /** Hashbrown schema describing the expected output shape. */
   schema: Schema;
   /**
-   * Optional transport override.
-   * Defaults to the global transport configured via `provideHashbrown`.
+   * Optional transport override. Defaults to the active provider's baseUrl.
    */
   transport?: TransportOrFactory;
   /** Optional label shown in hashbrown debug tooling. */
@@ -40,10 +40,15 @@ export interface AiStructuredCompletionOptions<
 @Injectable({ providedIn: 'root' })
 export class AiStructuredCompletionService {
   private readonly _injector = inject(Injector);
+  private readonly _providerService = inject(ChatProviderService);
 
   complete<Input, Schema extends s.HashbrownType>(
     options: AiStructuredCompletionOptions<Input, Schema>
   ): Promise<s.Infer<Schema>> {
+    const provider = this._providerService.active();
+    const transport = options.transport ?? createHttpTransport({ baseUrl: provider.baseUrl });
+    const model = provider.smallModel;
+
     return new Promise<s.Infer<Schema>>((resolve, reject) => {
       // Create a child injector scoped to this single completion so that the
       // resource and the watcher effect are cleaned up when we destroy it.
@@ -59,10 +64,10 @@ export class AiStructuredCompletionService {
 
         const resource = structuredCompletionResource({
           input: inputSignal,
-          model: 'gpt-4o@2025-01-01-preview',
+          model,
+          transport,
           system: options.system,
           schema: options.schema,
-          ...(options.transport ? { transport: options.transport } : {}),
           ...(options.debugName ? { debugName: options.debugName } : {}),
         });
 
