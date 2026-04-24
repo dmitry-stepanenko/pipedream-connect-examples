@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { ENV_VARS } from '../env-vars';
-import type { Workflow, WorkflowStep } from '../models/workflow.model';
+import type { Workflow, WorkflowStep, PipedreamStep } from '../models/workflow.model';
 import { validatePropTypes } from '@poc/shared';
 import {
   listWorkflows,
@@ -13,10 +13,14 @@ import {
   publishWorkflow,
   unpublishWorkflow,
   executeWorkflow,
-  getTestTriggerEvent,
+  captureEvent,
   testStep,
-  tryTrigger,
 } from '../services/workflow-engine';
+import {
+  listTriggerEvents,
+  getTriggerEvent,
+  appendTriggerEvent,
+} from '../services/trigger-event-store';
 import { isEqual } from 'lodash-es';
 import {
   listExecutionRuns,
@@ -267,10 +271,9 @@ workflows.delete('/:id', async (c) => {
   return new Response(null, { status: 204 });
 });
 
-// List recent events emitted by the workflow's deployed trigger
+// List captured trigger events for a workflow (from our DB)
 workflows.get('/:id/trigger-events', async (c) => {
   const externalUserId = c.req.query('externalUserId');
-  const n = Math.min(parseInt(c.req.query('n') ?? '10', 10), 100);
   if (!externalUserId) {
     return c.json({ error: 'externalUserId required' }, 400);
   }
@@ -280,21 +283,9 @@ workflows.get('/:id/trigger-events', async (c) => {
   if (!workflow || workflow.externalUserId !== externalUserId) {
     return c.json({ error: 'Not found' }, 404);
   }
-  if (!workflow.deployedTriggerId) {
-    return c.json({ events: [] });
-  }
 
-  try {
-    const pd = createPipedreamClient(c.env);
-    const res = await pd.deployedTriggers.listEvents(workflow.deployedTriggerId, {
-      externalUserId,
-      n,
-    });
-    return c.json({ events: (res as { data?: unknown[] }).data ?? [] });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 400);
-  }
+  const events = await listTriggerEvents(db, workflow.id);
+  return c.json({ events });
 });
 
 // Publish workflow
@@ -321,11 +312,15 @@ workflows.post('/:id/publish', async (c) => {
   }
 });
 
-// Test-trigger workflow — uses the last real event emitted by the deployed trigger
+// Test-run the workflow using a previously captured trigger event.
+// No publish guard — works for both draft and published workflows.
 workflows.post('/:id/trigger', async (c) => {
-  const { externalUserId } = await c.req.json();
+  const { externalUserId, eventId } = await c.req.json();
   if (!externalUserId) {
     return c.json({ error: 'externalUserId required' }, 400);
+  }
+  if (!eventId) {
+    return c.json({ error: 'eventId required' }, 400);
   }
 
   const db = createDb(c.env.DB);
@@ -335,15 +330,13 @@ workflows.post('/:id/trigger', async (c) => {
   }
 
   try {
+    const triggerEvent = await getTriggerEvent(db, eventId, workflow.id);
+    if (!triggerEvent) {
+      return c.json({ error: 'Trigger event not found' }, 404);
+    }
+
     const pd = createPipedreamClient(c.env);
-
-    // Resolve the trigger payload — synthetic for schedule triggers, otherwise
-    // the last real event from the deployed trigger.
-    const triggerPayload =
-      (await getTestTriggerEvent(pd, workflow, externalUserId)) ?? {};
-    console.log(JSON.stringify({ triggerPayload }, null, 2));
-
-    const run = await executeWorkflow(pd, db, workflow, triggerPayload, 'test');
+    const run = await executeWorkflow(pd, db, workflow, triggerEvent.event, 'test');
     return c.json({ run });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -374,6 +367,49 @@ workflows.post('/:id/unpublish', async (c) => {
   }
 });
 
+// Capture a new trigger event: temp-deploys the trigger with emitOnDeploy,
+// polls until an event is received (up to timeoutMs), persists it to trigger_events,
+// and updates the trigger step snapshot for step-by-step testing.
+workflows.post('/:id/capture-event', async (c) => {
+  const { externalUserId, timeoutMs = 60_000 } = await c.req.json();
+  if (!externalUserId) {
+    return c.json({ error: 'externalUserId required' }, 400);
+  }
+
+  const db = createDb(c.env.DB);
+  const workflow = await getWorkflow(db, c.req.param('id'));
+  if (!workflow || workflow.externalUserId !== externalUserId) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const triggerStep = workflow.steps[0];
+  if (!triggerStep?.data) {
+    return c.json({ error: 'Trigger is not configured yet' }, 400);
+  }
+
+  try {
+    const pd = createPipedreamClient(c.env);
+    const { event } = await captureEvent(pd, c.env, workflow, externalUserId, timeoutMs);
+
+    const triggerKey = triggerStep.data.source === 'pipedream'
+      ? (triggerStep.data as PipedreamStep).component.key ?? 'unknown'
+      : (triggerStep.data as { customTriggerId: string }).customTriggerId;
+
+    const stored = await appendTriggerEvent(db, workflow.id, triggerKey, event);
+
+    // Keep the trigger step snapshot current for step-by-step testing.
+    triggerStep.outputSnapshot = { $return_value: event, exports: {} };
+    triggerStep.tested = true;
+    workflow.updatedAt = new Date().toISOString();
+    await saveWorkflow(db, workflow);
+
+    return c.json({ event: stored });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: msg }, 400);
+  }
+});
+
 // Test a single action step using stored snapshots for interpolation context
 workflows.post('/:id/steps/:stepId/test', async (c) => {
   const { externalUserId } = await c.req.json();
@@ -390,88 +426,6 @@ workflows.post('/:id/steps/:stepId/test', async (c) => {
   const pd = createPipedreamClient(c.env);
   const result = await testStep(pd, db, workflow, c.req.param('stepId'));
   return c.json(result);
-});
-
-// Try the trigger — captures a sample event without requiring a full workflow publish.
-// Schedule triggers return a synthetic event immediately. App triggers are
-// temporarily deployed with emitOnDeploy, polled for their first event, then
-// deleted. The resulting snapshot is persisted on the trigger step so that
-// downstream action steps can reference {{steps.trigger.event.*}}.
-workflows.post('/:id/try-trigger', async (c) => {
-  const { externalUserId } = await c.req.json();
-  if (!externalUserId) {
-    return c.json({ error: 'externalUserId required' }, 400);
-  }
-
-  const db = createDb(c.env.DB);
-  const workflow = await getWorkflow(db, c.req.param('id'));
-  if (!workflow || workflow.externalUserId !== externalUserId) {
-    return c.json({ error: 'Not found' }, 404);
-  }
-
-  try {
-    const pd = createPipedreamClient(c.env);
-    const result = await tryTrigger(pd, db, c.env, workflow, externalUserId);
-    return c.json(result);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 400);
-  }
-});
-
-// Return a sample trigger event snapshot for the workflow's trigger step.
-// Works without publishing: schedule triggers get a synthetic event from their
-// configured props; other trigger types require a deployedTriggerId (published workflow).
-workflows.post('/:id/trigger-snapshot', async (c) => {
-  const { externalUserId } = await c.req.json();
-  if (!externalUserId) {
-    return c.json({ error: 'externalUserId required' }, 400);
-  }
-
-  const db = createDb(c.env.DB);
-  const workflow = await getWorkflow(db, c.req.param('id'));
-  if (!workflow || workflow.externalUserId !== externalUserId) {
-    return c.json({ error: 'Not found' }, 404);
-  }
-
-  try {
-    const pd = createPipedreamClient(c.env);
-    const event = await getTestTriggerEvent(pd, workflow, externalUserId);
-    if (!event) {
-      return c.json({ error: 'No sample event available — publish the workflow and let the trigger fire first.' }, 400);
-    }
-    return c.json({ snapshot: { $return_value: event, exports: {} } });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 400);
-  }
-});
-
-// Generate a test event for the workflow's deployed trigger (mirrors Pipedream's
-// "Generate Test Event" button) and return the emitted payload.
-workflows.post('/:id/emit-test-event', async (c) => {
-  const { externalUserId } = await c.req.json();
-  if (!externalUserId) {
-    return c.json({ error: 'externalUserId required' }, 400);
-  }
-
-  const db = createDb(c.env.DB);
-  const workflow = await getWorkflow(db, c.req.param('id'));
-  if (!workflow || workflow.externalUserId !== externalUserId) {
-    return c.json({ error: 'Not found' }, 404);
-  }
-  if (workflow.status !== 'published') {
-    return c.json({ error: 'Workflow must be published before generating a test event' }, 400);
-  }
-
-  try {
-    const pd = createPipedreamClient(c.env);
-    const event = await getTestTriggerEvent(pd, workflow, externalUserId);
-    return c.json({ event });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: msg }, 400);
-  }
 });
 
 // List execution runs for a workflow

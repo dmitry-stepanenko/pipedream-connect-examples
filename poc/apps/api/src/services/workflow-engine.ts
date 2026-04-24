@@ -273,50 +273,6 @@ export function buildScheduleSampleEvent(
 
 // ── Execution ───────────────────────────────────────────────────────────────
 
-/**
- * Fetches the most recently emitted event from a deployed trigger.
- * Returns the event payload (the `e` field) or null if the trigger has no events yet.
- */
-async function fetchLastTriggerEvent(
-  pd: PipedreamClient,
-  deployedTriggerId: string,
-  externalUserId: string,
-): Promise<Record<string, unknown> | null> {
-  const response = await pd.deployedTriggers.listEvents(deployedTriggerId, {
-    externalUserId,
-    n: 1,
-  });
-  const events = (response as { data?: Array<{ e?: Record<string, unknown> }> }).data;
-  return events?.[0]?.e ?? null;
-}
-
-/**
- * Returns the best available test event for the workflow's trigger:
- * - Schedule triggers (`schedule-*`): builds a synthetic event from the cron config.
- * - All other triggers: fetches the last real event from the deployed trigger.
- *
- * Mirrors Pipedream's "Generate Test Event" button behaviour.
- */
-export async function getTestTriggerEvent(
-  pd: PipedreamClient,
-  workflow: Workflow,
-  externalUserId: string,
-): Promise<Record<string, unknown> | null> {
-  const trigger = workflow.steps[0];
-  if (trigger?.data?.source === 'pipedream') {
-    const pdStep = trigger.data as PipedreamStep;
-    if (pdStep.app.nameSlug === 'schedule') {
-      return buildScheduleSampleEvent(
-        (pdStep.configuredProps ?? {}) as Record<string, unknown>,
-      );
-    }
-  }
-  if (workflow.deployedTriggerId) {
-    return fetchLastTriggerEvent(pd, workflow.deployedTriggerId, externalUserId);
-  }
-  return null;
-}
-
 export interface TestStepResult {
   success: boolean;
   outputSnapshot: StepSnapshot | null;
@@ -581,30 +537,28 @@ export async function executeWorkflow(
   return run;
 }
 
-// ── Try Trigger ──────────────────────────────────────────────────────────────
+// ── Capture Event ────────────────────────────────────────────────────────────
 
 /**
- * Captures a sample event from the workflow's trigger without requiring the
- * full workflow to be published:
+ * Captures a sample event from the workflow's trigger by doing a fresh poll,
+ * regardless of whether the workflow is published or draft:
  *
- * - Schedule triggers  → synthetic event, no deployment needed.
- * - Already-published workflows → fetch the last real event from the existing
- *   deployed trigger.
- * - Draft workflows with a Pipedream app trigger → temporarily deploy the
- *   trigger with `emitOnDeploy: true`, poll for the emitted event, then delete
- *   the temporary deployment so nothing lingers.
+ * - Schedule triggers  → synthetic event, returned immediately.
+ * - Pipedream app triggers → temporarily deploy the trigger with
+ *   `emitOnDeploy: true`, poll for the emitted event (up to `timeoutMs`),
+ *   then delete the temporary deployment.
  * - Custom triggers → return a minimal placeholder event.
  *
- * The resulting snapshot is persisted on the trigger step so that downstream
- * action steps can reference `{{steps.trigger.event.*}}` paths.
+ * The caller is responsible for persisting the event (see `appendTriggerEvent`)
+ * and updating the trigger step's `outputSnapshot`.
  */
-export async function tryTrigger(
+export async function captureEvent(
   pd: PipedreamClient,
-  db: Db,
   env: ENV_VARS,
   workflow: Workflow,
   externalUserId: string,
-): Promise<{ snapshot: StepSnapshot }> {
+  timeoutMs: number = 60_000,
+): Promise<{ event: Record<string, unknown> }> {
   const trigger = workflow.steps[0];
   if (!trigger?.data) throw new Error('Trigger is not configured yet');
 
@@ -618,22 +572,8 @@ export async function tryTrigger(
       event = buildScheduleSampleEvent(
         (pdStep.configuredProps ?? {}) as Record<string, unknown>,
       );
-    } else if (workflow.deployedTriggerId) {
-      // Workflow already has a live deployed trigger — just fetch its last event.
-      const lastEvent = await fetchLastTriggerEvent(
-        pd,
-        workflow.deployedTriggerId,
-        externalUserId,
-      );
-      if (!lastEvent) {
-        throw new Error(
-          'No events captured yet. Trigger an event at your external service and try again.',
-        );
-      }
-      event = lastEvent;
     } else {
-      // Draft workflow — deploy the trigger temporarily, grab the emitted event,
-      // then immediately clean up.
+      // All app triggers: deploy temporarily, poll for the emitted event, then clean up.
       if (!pdStep.component.key) throw new Error('Trigger component key is missing');
 
       const workerBaseUrl = env.WORKER_BASE_URL ?? 'https://example.com';
@@ -653,21 +593,23 @@ export async function tryTrigger(
       const tempTriggerId = (deployResponse as { data?: { id?: string } }).data?.id;
       if (!tempTriggerId) throw new Error('Trigger deployment did not return an ID');
 
-      let lastEvent: Record<string, unknown> | null = null;
+      let capturedEvent: Record<string, unknown> | null = null;
+      const pollInterval = 1_000;
+      const maxAttempts = Math.max(1, Math.ceil(timeoutMs / pollInterval));
+
       try {
-        // Poll up to 3 times (1.5 s total) while the emitted event propagates.
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
           if (attempt > 0) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
           }
           const res = await pd.deployedTriggers.listEvents(tempTriggerId, {
             externalUserId,
             n: 1,
           });
-          lastEvent =
+          capturedEvent =
             (res as { data?: Array<{ e?: Record<string, unknown> }> }).data?.[0]
               ?.e ?? null;
-          if (lastEvent) break;
+          if (capturedEvent) break;
         }
       } finally {
         // Always remove the temporary deployment.
@@ -681,29 +623,20 @@ export async function tryTrigger(
         }
       }
 
-      if (!lastEvent) {
+      if (!capturedEvent) {
         throw new Error(
-          'The trigger was activated but no sample event was emitted. ' +
-            'Try triggering an event at your external service, or configure the trigger differently.',
+          'No event was emitted within the timeout. ' +
+            'Trigger an event at your external service and try again.',
         );
       }
-      event = lastEvent;
+      event = capturedEvent;
     }
   } else if (trigger.data.source === 'custom') {
-    // Custom triggers: return a minimal placeholder so the trigger step is
-    // marked as tested and action steps can reference it.
+    // Custom triggers: return a minimal placeholder.
     event = { type: trigger.data.customTriggerId, payload: {} };
   } else {
     throw new Error('Unknown trigger type');
   }
 
-  const snapshot: StepSnapshot = { $return_value: event, exports: {} };
-
-  // Persist the snapshot on the trigger step so action steps can use it.
-  trigger.outputSnapshot = snapshot;
-  trigger.tested = true;
-  workflow.updatedAt = new Date().toISOString();
-  await saveWorkflow(db, workflow);
-
-  return { snapshot };
+  return { event };
 }
