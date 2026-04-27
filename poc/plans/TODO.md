@@ -8,10 +8,10 @@
 7. show steps progress
 <!-- 8. workflows pages with filters, list of trigger events and runs -->
 <!-- 3. have a place to manage connected accounts -->
-- prevent repitive tool calls if LLM goes into a loop? maybe validate it's not called more than N times?
+<!-- - prevent repitive tool calls if LLM goes into a loop? maybe validate it's not called more than N times? -->
 - add an ability to review mid-process
 - add autosave with debounce, make sure we always use the workflow from the response
-- additional suggestions for the selected action? e.g. if openai we would want to always use "chat"
+<!-- - additional suggestions for the selected action? e.g. if openai we would want to always use "chat" -->
 - add conditions (like if/then or split)
 <!-- - how "generate test event" play along with already published trigger? -->
 <!-- - try now vs emit test event in the trigger? -->
@@ -20,8 +20,8 @@
 Bugs:
 <!-- 1. when account is disconnected, it's not reflected in the workflow -->
 2. sometimes connected accounts do not show authorized data until you reconnect
-3. if configure step throws, it may try to call it again and again indefinitely
- - not set checkboxes should not be treated as required
+<!-- 3. if configure step throws, it may try to call it again and again indefinitely -->
+ <!-- - not set checkboxes should not be treated as required -->
 <!-- 4. it's not always asking to connect or when it does, the llm stream is not finished -->
 <!-- 5. AI Chat does not wait for auth-guarded data of the step to be loaded -->
 <!-- 

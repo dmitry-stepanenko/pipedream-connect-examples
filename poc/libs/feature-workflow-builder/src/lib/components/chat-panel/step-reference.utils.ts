@@ -25,7 +25,7 @@ export function enumeratePaths(value: unknown, prefix = ''): string[] {
 
 export function validateStepReferences(
   propValues: Record<string, unknown>,
-  steps: Array<{ data: unknown; outputSnapshot?: StepSnapshot | null; tested?: boolean }>,
+  steps: Array<{ data: unknown; outputSnapshot?: StepSnapshot | null; snapshotStale?: boolean; tested?: boolean }>,
 ): { valid: true } | { valid: false; error: string; availablePaths: string[] } {
   const refPattern = /\{\{steps\.([^.}]+)\.([^}]+)\}\}/g;
   const allText = JSON.stringify(propValues);
@@ -53,7 +53,7 @@ export function validateStepReferences(
       };
     }
 
-    if (!referencedStep.tested || !referencedStep.outputSnapshot) {
+    if (!referencedStep.outputSnapshot) {
       return {
         valid: false,
         error: `Reference {{steps.${slug}.${path}}} — step "${slug}" has not been tested yet. Test it first to capture its output.`,

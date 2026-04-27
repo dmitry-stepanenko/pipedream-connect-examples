@@ -28,6 +28,7 @@ export const workflowSteps = sqliteTable('workflow_steps', {
   data: text('data'), // JSON: PipedreamStep | CustomTriggerStep | null
   outputSchema: text('output_schema'), // JSON: StepOutputSchema | null
   outputSnapshot: text('output_snapshot'), // JSON: StepSnapshot | null
+  snapshotStale: integer('snapshot_stale', { mode: 'boolean' }).notNull().default(false),
   tested: integer('tested', { mode: 'boolean' }).notNull().default(false),
 });
 

@@ -69,7 +69,7 @@ function invalidateStaleSnapshots(
 
   return newSteps.map((step, i) =>
     i >= invalidateFrom
-      ? { ...step, outputSnapshot: null, outputSchema: null, tested: false }
+      ? { ...step, snapshotStale: true, outputSchema: null, tested: false }
       : step,
   );
 }
@@ -347,6 +347,7 @@ workflows.post('/:id/capture-event', async (c) => {
 
     // Keep the trigger step snapshot current for step-by-step testing.
     triggerStep.outputSnapshot = { $return_value: event, exports: {} };
+    triggerStep.snapshotStale = false;
     triggerStep.tested = true;
     workflow.updatedAt = new Date().toISOString();
     await saveWorkflow(db, workflow);

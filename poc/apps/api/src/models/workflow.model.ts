@@ -42,6 +42,8 @@ export interface WorkflowStep {
   data: WorkflowStepData | null;
   outputSchema?: StepOutputSchema | null;
   outputSnapshot?: StepSnapshot | null;
+  /** True when the step config changed after the last test run — snapshot shape may be outdated */
+  snapshotStale?: boolean;
   tested?: boolean;
 }
 

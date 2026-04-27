@@ -50,6 +50,8 @@ export interface WorkflowStep {
   outputSchema?: StepOutputSchema | null;
   /** Actual output from the last successful test run (action steps) */
   outputSnapshot?: StepSnapshot | null;
+  /** True when the step config changed after the last test run — snapshot shape may be outdated */
+  snapshotStale?: boolean;
   /** Whether this step has been tested at least once */
   tested?: boolean;
 }

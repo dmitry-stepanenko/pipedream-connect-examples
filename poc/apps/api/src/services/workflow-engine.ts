@@ -388,8 +388,8 @@ export async function testStep(
       exports: typedResult.exports ?? {},
     };
     step.outputSnapshot = snapshot;
+    step.snapshotStale = false;
     step.tested = true;
-    workflow.updatedAt = new Date().toISOString();
     await saveWorkflow(db, workflow);
 
     return { success: true, outputSnapshot: snapshot, error: null };
@@ -484,6 +484,7 @@ export async function executeWorkflow(
       };
       stepsContext[slugFromKey(componentKey)] = snapshot;
       step.outputSnapshot = snapshot;
+      step.snapshotStale = false;
       step.tested = true;
 
       run.steps.push({

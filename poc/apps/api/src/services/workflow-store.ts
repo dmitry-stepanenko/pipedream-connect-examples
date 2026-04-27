@@ -26,6 +26,7 @@ function rowToWorkflow(
       data: s.data ? JSON.parse(s.data) : null,
       outputSchema: s.outputSchema ? JSON.parse(s.outputSchema) : null,
       outputSnapshot: s.outputSnapshot ? JSON.parse(s.outputSnapshot) : null,
+      snapshotStale: s.snapshotStale,
       tested: s.tested,
     })),
   };
@@ -130,6 +131,7 @@ export async function saveWorkflow(db: Db, workflow: Workflow): Promise<void> {
       outputSnapshot: step.outputSnapshot
         ? JSON.stringify(step.outputSnapshot)
         : null,
+      snapshotStale: step.snapshotStale ?? false,
       tested: step.tested ?? false,
     })),
   );

@@ -135,7 +135,7 @@ describe('validateStepReferences', () => {
     }
   });
 
-  it('fails when the referenced step has not been tested', () => {
+  it('fails when the referenced step has not been tested (no snapshot)', () => {
     const untestedStep = { ...calendarStep, tested: false, outputSnapshot: null };
     const result = validateStepReferences(
       { text: '{{steps.google_calendar_list_events.$return_value.0.id}}' },
@@ -145,6 +145,15 @@ describe('validateStepReferences', () => {
     if (!result.valid) {
       expect(result.error).toContain('has not been tested yet');
     }
+  });
+
+  it('passes for a valid path against a stale snapshot', () => {
+    const staleStep = { ...calendarStep, snapshotStale: true };
+    const result = validateStepReferences(
+      { text: '{{steps.google_calendar_list_events.$return_value.0.id}}' },
+      [staleStep],
+    );
+    expect(result.valid).toBe(true);
   });
 
   it('fails when the path does not exist in the snapshot', () => {

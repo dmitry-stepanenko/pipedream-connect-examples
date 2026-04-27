@@ -1,0 +1,1 @@
+ALTER TABLE workflow_steps ADD COLUMN snapshot_stale INTEGER NOT NULL DEFAULT 0;

@@ -367,6 +367,10 @@
   color: #16a34a;
 }
 
+.pd-test-status--stale {
+  color: #d97706;
+}
+
 .pd-test-status--error {
   color: #dc2626;
 }

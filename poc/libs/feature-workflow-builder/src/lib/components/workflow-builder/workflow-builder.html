@@ -269,7 +269,11 @@
                     }
                   </button>
                   @if (selectedStep()?.tested) {
-                    <small class="pd-test-status pd-test-status--ok">✓ Tested</small>
+                    @if (selectedStep()?.snapshotStale) {
+                      <small class="pd-test-status pd-test-status--stale">⚠ Re-test needed</small>
+                    } @else {
+                      <small class="pd-test-status pd-test-status--ok">✓ Tested</small>
+                    }
                   }
                   @if (testError()) {
                     <small class="pd-test-status pd-test-status--error">{{ testError() }}</small>
