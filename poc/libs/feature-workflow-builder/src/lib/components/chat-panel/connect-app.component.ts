@@ -13,6 +13,7 @@ import {
   MatDialogModule,
   MAT_DIALOG_DATA,
 } from '@angular/material/dialog';
+import { filter, firstValueFrom, fromEvent, map } from 'rxjs';
 import { PipedreamClientService } from '@poc/connect-angular';
 import { WorkflowService } from '@poc/data-access-api';
 import type { PipedreamStep } from '@poc/data-access-api';
@@ -211,11 +212,33 @@ export class ConnectAppComponent {
   private async connectNew(appProp: AppPropConfig) {
     this.state.set('connecting');
     try {
-      const result = await this.pdClient.connectAccount(appProp.app);
-      await this.onAccountSelected(appProp, result.id);
+      const result = await Promise.race([
+        this.pdClient.connectAccount(appProp.app),
+        this._connectionInterrupted(),
+      ]);
+      if (result) {
+        await this.onAccountSelected(appProp, result.id);
+      } else {
+        // User closed the popup — reset to idle silently
+        this.state.set('idle');
+      }
     } catch {
       this.state.set('error');
     }
+  }
+
+  private _connectionInterrupted(): Promise<null> {
+    return firstValueFrom(
+      fromEvent<MessageEvent>(window, 'message').pipe(
+        filter(
+          (v) =>
+            v?.type === 'message' &&
+            v.data?.type === 'close' &&
+            v.origin === 'https://pipedream.com',
+        ),
+        map(() => null),
+      ),
+    );
   }
 
   private async onAccountSelected(appProp: AppPropConfig, accountId: string) {

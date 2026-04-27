@@ -10,6 +10,7 @@ import {
 import { ConfigurableProp } from '@pipedream/sdk';
 import { PipedreamClientService } from '../../../services/pipedream-client.service';
 import { FieldWrapperComponent } from './field-wrapper';
+import { filter, firstValueFrom, fromEvent, map } from 'rxjs';
 
 interface Account {
   id: string;
@@ -221,7 +222,9 @@ export class AppFieldComponent {
   protected readonly outdated = signal(false);
   protected readonly error = signal<string | null>(null);
 
-  protected readonly viewState = computed<'loading' | 'connected' | 'outdated' | 'picking' | 'idle'>(() => {
+  protected readonly viewState = computed<
+    'loading' | 'connected' | 'outdated' | 'picking' | 'idle'
+  >(() => {
     if (this.loadingAccounts()) return 'loading';
     if (this.picking()) return 'picking';
     if (this.value() && this.outdated()) return 'outdated';
@@ -262,11 +265,16 @@ export class AppFieldComponent {
     this.connecting.set(true);
     this.error.set(null);
     try {
-      const result = await this.client.connectAccount(this.asApp().app);
-      await this.loadAccounts(this.asApp().app);
-      this.picking.set(false);
-      this.outdated.set(false);
-      this.valueChange.emit(result.id);
+      const result = await Promise.race([
+        this.client.connectAccount(this.asApp().app),
+        this._connectionInterrupted(),
+      ]);
+      if (result) {
+        await this.loadAccounts(this.asApp().app);
+        this.picking.set(false);
+        this.outdated.set(false);
+        this.valueChange.emit(result.id);
+      }
     } catch {
       this.error.set('Connection failed. Please try again.');
     } finally {
@@ -297,7 +305,9 @@ export class AppFieldComponent {
       this.accounts.set(data.map((a: any) => ({ id: a.id, name: a.name })));
       const currentId = this.value();
       if (currentId) {
-        this.outdated.set(!data.some((a: { id: string }) => a.id === currentId));
+        this.outdated.set(
+          !data.some((a: { id: string }) => a.id === currentId),
+        );
       }
     } catch {
       this.accounts.set([]);
@@ -305,5 +315,19 @@ export class AppFieldComponent {
     } finally {
       this.loadingAccounts.set(false);
     }
+  }
+
+  private _connectionInterrupted() {
+    return firstValueFrom(
+      fromEvent<MessageEvent>(window, 'message').pipe(
+        filter(
+          (v) =>
+            v?.type === 'message' &&
+            v.data?.type === 'close' &&
+            v.origin === 'https://pipedream.com',
+        ),
+        map(() => null),
+      ),
+    );
   }
 }

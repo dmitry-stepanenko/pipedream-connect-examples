@@ -1,5 +1,7 @@
 import { Component, input, output, signal, effect, inject, untracked, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
 import { ConfigurableProp, ConfiguredProps, PropOption } from '@pipedream/sdk';
 import { PipedreamClientService } from '../../../services/pipedream-client.service';
 import { FieldWrapperComponent } from './field-wrapper';
@@ -9,35 +11,34 @@ interface SelectOption { label: string; value: unknown }
 @Component({
   selector: 'pd-select-field',
   standalone: true,
-  imports: [FormsModule, FieldWrapperComponent],
+  imports: [FormsModule, MatFormFieldModule, MatSelectModule, FieldWrapperComponent],
   template: `
     <pd-field-wrapper [prop]="prop()" [fieldId]="prop().name">
       @if (loading()) {
         <p class="pd-loading">Loading options...</p>
       } @else {
-        <select
-          [id]="prop().name"
-          [ngModel]="value()"
-          (ngModelChange)="valueChange.emit($event)"
-          [required]="!prop().optional"
-          class="pd-select"
-        >
-          <option [ngValue]="null">— Select —</option>
-          @for (opt of resolvedOptions(); track opt.value) {
-            <option [ngValue]="opt.value">{{ opt.label }}</option>
-          }
-        </select>
+        <mat-form-field appearance="outline" class="pd-mat-field">
+          <mat-select
+            [id]="prop().name"
+            [multiple]="isMulti()"
+            [ngModel]="isMulti() ? multiValue() : value()"
+            (ngModelChange)="valueChange.emit($event)"
+            [required]="!prop().optional"
+          >
+            @if (!isMulti()) {
+              <mat-option [value]="null">— Select —</mat-option>
+            }
+            @for (opt of resolvedOptions(); track opt.value) {
+              <mat-option [value]="opt.value">{{ opt.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
       }
     </pd-field-wrapper>
   `,
   styles: [`
-    .pd-select {
+    .pd-mat-field {
       width: 100%;
-      padding: 0.5rem;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      font-size: 0.9rem;
-      background: #fff;
     }
     .pd-loading {
       font-size: 0.85rem;
@@ -59,6 +60,19 @@ export class SelectFieldComponent {
   propIndex = input(0);
   /** Full list of configurable props — used to compute upstream dependencies */
   allProps = input<ConfigurableProp[]>([]);
+
+  protected readonly isMulti = computed(() => {
+    const type = (this.prop() as ConfigurableProp & { type?: string }).type;
+    return type === 'string[]' || type === 'integer[]';
+  });
+
+  /** For multi-select: ensure value is always an array */
+  protected readonly multiValue = computed<unknown[]>(() => {
+    const v = this.value();
+    if (Array.isArray(v)) return v;
+    if (v != null) return [v];
+    return [];
+  });
 
   protected readonly resolvedOptions = signal<SelectOption[]>([]);
   protected readonly loading = signal(false);
