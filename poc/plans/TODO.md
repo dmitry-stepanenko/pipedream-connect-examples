@@ -24,7 +24,6 @@ Bugs:
  - not set checkboxes should not be treated as required
 <!-- 4. it's not always asking to connect or when it does, the llm stream is not finished -->
 <!-- 5. AI Chat does not wait for auth-guarded data of the step to be loaded -->
-
 <!-- 
 NOTES
 we need to be able to resolve interpolation in fields. I'd like to 

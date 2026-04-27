@@ -110,7 +110,6 @@ app.post('/api/chat-azure', async (c) => {
 
 app.post('/api/chat-openai', async (c) => {
   const { OPENAI_API_KEY } = c.env;
-  console.log({OPENAI_API_KEY});
 
   if (!OPENAI_API_KEY) {
     return c.json({ error: 'OPENAI_API_KEY not configured' }, 500);

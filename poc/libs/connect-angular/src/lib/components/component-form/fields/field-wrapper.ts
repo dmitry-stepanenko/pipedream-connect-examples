@@ -8,7 +8,7 @@ import { ConfigurableProp } from '@pipedream/sdk';
     <div class="pd-field" [class.pd-field--required]="!prop().optional">
       <label [for]="fieldId()">
         {{ prop().label ?? prop().name }}
-        @if (!prop().optional) { <span class="pd-required">*</span> }
+        @if (prop().optional === false) { <span class="pd-required">*</span> }
       </label>
 
       <ng-content />

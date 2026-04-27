@@ -181,13 +181,16 @@ function validateTimerProp(key: string, val: unknown): PropTypeError | null {
  */
 export function validatePropTypes(
   configuredProps: Record<string, unknown>,
-  configurableProps: Array<{ name: string; type?: string }>,
+  configurableProps: Array<{ name: string; type?: string; readOnly?: boolean }>,
 ): PropTypeValidationResult {
   const errors: PropTypeError[] = [];
 
   for (const [key, val] of Object.entries(configuredProps)) {
     const propDef = configurableProps.find((p) => p.name === key);
     if (!propDef?.type) continue;
+
+    // readOnly props are display-only — skip validation entirely.
+    if (propDef.readOnly) continue;
 
     const declaredType = propDef.type;
 

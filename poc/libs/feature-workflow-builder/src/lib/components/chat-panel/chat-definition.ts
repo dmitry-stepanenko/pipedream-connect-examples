@@ -24,9 +24,30 @@ import { ConnectAppComponent } from './connect-app.component';
 import { CaptureEventComponent } from './components/capture-event.component';
 import { PropOption, PropOptionValue } from '@pipedream/sdk';
 import { validateStepReferences } from './step-reference.utils';
-import { validatePropTypes } from '@poc/shared';
+import { validatePropTypes, isPropOptional } from '@poc/shared';
 import { WorkflowSuggestionCard } from './components/workflow-suggestions-card.component';
 
+/**
+ * Per-component instructions injected into the configure_step response.
+ * Keyed by Pipedream component key. Add entries here to guide the LLM on
+ * how to configure specific components without bloating the system prompt.
+ *
+ * Instructions arrive in the tool result exactly when the LLM has just
+ * loaded the component and is deciding what props to set — best possible timing.
+ */
+function getComponentHint(appSlug: string, componentKey: string): string | null {
+  // All OpenAI actions: prefer chat completions + cheapest model.
+  if (appSlug === 'openai') {
+    // Legacy /completions actions — redirect to the chat completions action.
+    if (componentKey === 'openai-text-completion-with-prompt' || componentKey === 'openai-send-prompt') {
+      return 'DEPRECATED: use the" openai-chat" action instead';
+    }
+    // All other OpenAI actions: default to the cheapest available model.
+    return 'Use the "gpt-4o-mini" model unless the user has asked for a specific one. If not available, prefer the simplest and cheapest model from the available options list.';
+  }
+
+  return null;
+}
 
 export class AIChatDefinition {
   private readonly injector = inject(Injector);
@@ -213,7 +234,11 @@ export class AIChatDefinition {
         .filter((p) => p.type === 'app')
         .map((p) => ({ type: p.type, app: p.app, name: p.name }));
       const requiredProps = props
-        .filter((p) => p.type !== 'app' && !p.optional)
+        .filter((p) => {
+          if (p.type === 'app') return false;
+          if ((p as { readOnly?: boolean }).readOnly) return false;
+          return !isPropOptional(p);
+        })
         .map((p) => ({
           name: p.name,
           label: p.label ?? p.name,
@@ -233,19 +258,34 @@ export class AIChatDefinition {
       const authType = appData?.data?.authType;
       const needsAuth = authType && authType !== 'none';
 
+      const componentType = component.componentType ?? 'action';
+      const testingInstruction = componentType === 'source'
+        ? 'Then render pd-capture-event so the user can capture a sample trigger event — the trigger MUST have a captured event before any downstream step can reference its output.'
+        : 'Then call test_step to execute it and capture its output snapshot — the step MUST be tested before any downstream step can reference its output.';
+
+      const authBlock = needsAuth
+        ? {
+            BLOCKED_ON_ACCOUNT_CONNECTION: true,
+            ACTION_REQUIRED:
+              'You MUST render a pd-connect-app component for each entry in accountsToConnect and WAIT for the user before calling set_step_props. ' +
+              'Pass each accountsToConnect object verbatim as the appProp input — do NOT construct the object yourself.',
+          }
+        : {
+            NEXT_REQUIRED_ACTION:
+              'Call set_step_props NOW for this step before configuring any other step. ' +
+              'Do not add steps, do not call configure_step on another step, until set_step_props succeeds for this one. ' +
+              testingInstruction,
+          };
+
+      const componentHint = getComponentHint(input.appSlug, input.componentKey);
+
       const result = {
         success: true,
-        ...(needsAuth
-          ? {
-              BLOCKED_ON_ACCOUNT_CONNECTION: true,
-              ACTION_REQUIRED:
-                'You MUST render a pd-connect-app component for each entry in accountsToConnect and WAIT for the user before calling set_step_props. ' +
-                'Pass each accountsToConnect object verbatim as the appProp input — do NOT construct the object yourself.',
-            }
-          : {}),
+        ...authBlock,
+        ...(componentHint ? { COMPONENT_INSTRUCTIONS: componentHint } : {}),
         app: app.name,
         component: component.name,
-        componentType: component.componentType ?? 'action',
+        componentType,
         requiresAccountConnection: needsAuth,
         requiredProperties: requiredProps,
         triggerEventSchema: triggerSchema
@@ -255,13 +295,13 @@ export class AIChatDefinition {
             }
           : null,
         allProperties: props
-          .filter((p) => p.type !== 'app')
+          .filter((p) => p.type !== 'app' && !(p as { readOnly?: boolean }).readOnly)
           .map((p) => ({
             name: p.name,
             label: p.label ?? p.name,
             type: p.type,
             description: p.description ?? '',
-            optional: !!p.optional,
+            optional: isPropOptional(p ),
             default: (p as any).default,
             options: (p as any).options ?? null,
             remoteOptions: !!p.remoteOptions,
@@ -300,6 +340,12 @@ export class AIChatDefinition {
                 'Array value for string[] or array props',
                 s.string('Array item'),
               ),
+              s.object('Timer value: polling interval in seconds — use for $.interface.timer props', {
+                intervalSeconds: s.number('Polling interval in seconds (e.g. 900 for 15 minutes)'),
+              }),
+              s.object('Timer value: cron schedule — use for $.interface.timer props', {
+                cron: s.string('Cron expression (e.g. "0 9 * * 1" for every Monday at 9 AM)'),
+              }),
             ]),
           },
         ),
@@ -312,10 +358,11 @@ export class AIChatDefinition {
       error: string | null;
       configuredProps: Record<string, unknown> | null;
     }> => {
-      const props: Record<string, PropOptionValue | string[]> = {};
+      console.log(JSON.parse(JSON.stringify({SET_PROPS: input})));
+      const props: Record<string, PropOptionValue | string[] | Record<string, unknown>> = {};
       for (const entry of input.props as {
         name: string;
-        value: string | number | boolean | string[];
+        value: string | number | boolean | string[] | Record<string, unknown>;
       }[]) {
         props[entry.name] = entry.value;
       }
@@ -403,6 +450,7 @@ export class AIChatDefinition {
           if (
             validValues.length > 0 &&
             !Array.isArray(val) &&
+            typeof val !== 'object' &&
             !validValues.includes(val)
           ) {
             return {

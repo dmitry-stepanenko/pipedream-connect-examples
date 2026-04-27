@@ -11,12 +11,12 @@ export const CHAT_PROVIDERS: ChatProvidersMap = {
     name: 'Azure OpenAI',
     baseUrl: `${environment.apiUrl}/api/chat-azure`,
     model: 'gpt-4o@2025-01-01-preview',
-    smallModel: 'gpt-4o-mini@2024-07-18',
+    smallModel: 'gpt-4o@2025-01-01-preview',
   },
   openai: {
     name: 'OpenAI',
     baseUrl: `${environment.apiUrl}/api/chat-openai`,
-    model: 'gpt-4o',
+    model: 'gpt-5.4',
     smallModel: 'gpt-4o-mini',
   },
 };
