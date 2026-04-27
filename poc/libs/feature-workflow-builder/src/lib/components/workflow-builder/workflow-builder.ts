@@ -14,7 +14,7 @@ import { WorkflowStepComponent } from '../workflow-step/workflow-step';
 import { StepPickerComponent } from '../step-picker/step-picker';
 import { ChatPanelComponent } from '../chat-panel/chat-panel';
 import { EventPickerDialogComponent } from '../event-picker-dialog/event-picker-dialog';
-import { slugFromKey, enumeratePaths } from '../chat-panel/step-reference.utils';
+import { getAvailablePaths } from '../chat-panel/step-reference.utils';
 
 @Component({
   selector: 'pd-workflow-builder',
@@ -110,27 +110,7 @@ export class WorkflowBuilderComponent {
   protected readonly availablePaths = computed((): string[] => {
     const steps = this.workflowService.activeSteps();
     const selectedIdx = steps.findIndex(s => s.id === this.selectedStepId());
-    if (selectedIdx <= 0) return [];
-    const paths: string[] = [];
-    for (let i = 0; i < selectedIdx; i++) {
-      const step = steps[i];
-      const data = step.data;
-      if (!data || data.source !== 'pipedream') continue;
-      const pd = data as PipedreamStep;
-      if (!pd.component?.key) continue;
-      if (step.outputSnapshot) {
-        if (step.type === 'trigger') {
-          // Trigger output is wrapped as { event: $return_value } at runtime
-          paths.push(...enumeratePaths(step.outputSnapshot.$return_value, 'steps.trigger.event'));
-        } else {
-          paths.push(...enumeratePaths(step.outputSnapshot, `steps.${slugFromKey(pd.component.key)}`));
-        }
-      } else {
-        const prefix = step.type === 'trigger' ? 'steps.trigger' : `steps.${slugFromKey(pd.component.key)}`;
-        paths.push(prefix);
-      }
-    }
-    return paths;
+    return getAvailablePaths(steps, selectedIdx);
   });
 
   protected selectStep(stepId: string) {

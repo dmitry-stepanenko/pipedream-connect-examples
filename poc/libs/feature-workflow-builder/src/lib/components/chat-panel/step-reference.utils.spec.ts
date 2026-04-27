@@ -2,8 +2,9 @@ import {
   slugFromKey,
   enumeratePaths,
   validateStepReferences,
+  getAvailablePaths,
 } from './step-reference.utils';
-import type { StepSnapshot } from '@poc/data-access-api';
+import type { StepSnapshot, WorkflowStep } from '@poc/data-access-api';
 
 // ── slugFromKey ──────────────────────────────────────────────────────────────
 
@@ -196,5 +197,151 @@ describe('validateStepReferences', () => {
       [calendarStep],
     );
     expect(result.valid).toBe(true);
+  });
+});
+
+// ── getAvailablePaths ────────────────────────────────────────────────────────
+
+const triggerStep: WorkflowStep = {
+  id: 'step-trigger',
+  type: 'trigger',
+  data: {
+    source: 'pipedream',
+    app: {} as any,
+    component: { key: 'google_calendar-new-event' } as any,
+    configuredProps: {},
+  },
+};
+
+const triggerStepWithSnapshot: WorkflowStep = {
+  ...triggerStep,
+  tested: true,
+  outputSnapshot: {
+    $return_value: { id: 'evt1', summary: 'meeting' },
+    exports: {},
+  } satisfies StepSnapshot,
+};
+
+const actionStep: WorkflowStep = {
+  id: 'step-action',
+  type: 'action',
+  data: {
+    source: 'pipedream',
+    app: {} as any,
+    component: { key: 'slack_v2-send-message' } as any,
+    configuredProps: {},
+  },
+};
+
+const actionStepWithSnapshot: WorkflowStep = {
+  ...actionStep,
+  tested: true,
+  outputSnapshot: {
+    $return_value: { ts: '12345', channel: 'C001' },
+    exports: { $summary: 'Message sent' },
+  } satisfies StepSnapshot,
+};
+
+const customTriggerStep: WorkflowStep = {
+  id: 'step-custom',
+  type: 'trigger',
+  data: { source: 'custom', customTriggerId: 'order-created' },
+};
+
+describe('getAvailablePaths', () => {
+  it('returns empty array when selectedStepIndex is 0', () => {
+    expect(getAvailablePaths([triggerStep, actionStep], 0)).toEqual([]);
+  });
+
+  it('returns empty array when selectedStepIndex is negative', () => {
+    expect(getAvailablePaths([triggerStep], -1)).toEqual([]);
+  });
+
+  it('skips non-pipedream steps', () => {
+    const paths = getAvailablePaths([customTriggerStep, actionStep], 1);
+    expect(paths).toEqual([]);
+  });
+
+  it('returns prefix path for trigger without snapshot', () => {
+    const paths = getAvailablePaths([triggerStep, actionStep], 1);
+    expect(paths).toEqual(['steps.trigger']);
+  });
+
+  it('returns prefix path for action without snapshot', () => {
+    const paths = getAvailablePaths([triggerStep, actionStep], 2);
+    expect(paths).toContain('steps.trigger');
+    expect(paths).toContain('steps.slack_v2_send_message');
+  });
+
+  it('enumerates trigger snapshot under steps.trigger', () => {
+    const paths = getAvailablePaths([triggerStepWithSnapshot, actionStep], 1);
+    expect(paths).toContain('steps.trigger');
+    expect(paths).toContain('steps.trigger.$return_value');
+    expect(paths).toContain('steps.trigger.$return_value.id');
+    expect(paths).toContain('steps.trigger.$return_value.summary');
+    expect(paths).toContain('steps.trigger.exports');
+  });
+
+  it('enumerates action snapshot under steps.{slug}', () => {
+    const paths = getAvailablePaths([triggerStep, actionStepWithSnapshot], 2);
+    expect(paths).toContain('steps.slack_v2_send_message');
+    expect(paths).toContain('steps.slack_v2_send_message.$return_value');
+    expect(paths).toContain('steps.slack_v2_send_message.$return_value.ts');
+    expect(paths).toContain('steps.slack_v2_send_message.$return_value.channel');
+    expect(paths).toContain('steps.slack_v2_send_message.exports');
+    expect(paths).toContain('steps.slack_v2_send_message.exports.$summary');
+  });
+
+  it('only includes steps before selectedStepIndex', () => {
+    // Step at index 2 is the selected step — only steps 0 and 1 should contribute paths
+    const selectedStep: WorkflowStep = {
+      id: 'step-selected',
+      type: 'action',
+      data: {
+        source: 'pipedream',
+        app: {} as any,
+        component: { key: 'gmail-send-email' } as any,
+        configuredProps: {},
+      },
+      outputSnapshot: {
+        $return_value: { messageId: 'msg1' },
+        exports: {},
+      },
+    };
+    const paths = getAvailablePaths(
+      [triggerStepWithSnapshot, actionStepWithSnapshot, selectedStep],
+      2,
+    );
+    // Paths from preceding steps must appear
+    expect(paths.some((p) => p.startsWith('steps.trigger.$return_value'))).toBe(true);
+    expect(paths.some((p) => p.startsWith('steps.slack_v2_send_message'))).toBe(true);
+    // Selected step's paths must NOT appear
+    expect(paths.some((p) => p.startsWith('steps.gmail_send_email'))).toBe(false);
+  });
+
+  it('skips pipedream steps with no component key', () => {
+    const stepNoKey: WorkflowStep = {
+      id: 'step-nokey',
+      type: 'action',
+      data: {
+        source: 'pipedream',
+        app: {} as any,
+        component: {} as any,
+        configuredProps: {},
+      },
+    };
+    const paths = getAvailablePaths([stepNoKey, actionStep], 1);
+    expect(paths).toEqual([]);
+  });
+
+  it('combines paths from multiple preceding steps', () => {
+    const steps: WorkflowStep[] = [
+      triggerStepWithSnapshot,
+      actionStepWithSnapshot,
+      { ...actionStep, id: 'step-selected' },
+    ];
+    const paths = getAvailablePaths(steps, 2);
+    expect(paths.some((p) => p.startsWith('steps.trigger.$return_value'))).toBe(true);
+    expect(paths.some((p) => p.startsWith('steps.slack_v2_send_message'))).toBe(true);
   });
 });

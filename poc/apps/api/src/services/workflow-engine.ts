@@ -323,14 +323,11 @@ export async function testStep(
     const s = workflow.steps[i];
     if (!s.outputSnapshot) continue;
     if (i === 0) {
-      stepsContext['trigger'] = { event: s.outputSnapshot.$return_value };
+      stepsContext['trigger'] = s.outputSnapshot;
     } else if (s.data?.source === 'pipedream') {
       const key = (s.data as PipedreamStep).component?.key;
       if (key) {
-        stepsContext[slugFromKey(key)] = {
-          $return_value: s.outputSnapshot.$return_value,
-          ...s.outputSnapshot.exports,
-        };
+        stepsContext[slugFromKey(key)] = s.outputSnapshot;
       }
     }
   }
@@ -436,7 +433,7 @@ export async function executeWorkflow(
   // steps context is keyed by component slug (e.g. "google_calendar_list_events")
   // matching Pipedream's {{steps.X.Y}} interpolation convention.
   const stepsContext: Record<string, unknown> = {
-    trigger: { event: triggerPayload },
+    trigger: { $return_value: triggerPayload, exports: {} },
   };
 
   for (const step of workflow.steps.slice(1)) {
@@ -480,18 +477,12 @@ export async function executeWorkflow(
       if (errorObs) {
         throw new Error(errorObs.err?.message ?? 'Step returned an error');
       }
-      // Use $return_value to match Pipedream's {{steps.X.$return_value}} convention
-      const stepOutput: Record<string, unknown> = {
-        $return_value: typedResult.ret,
-        ...typedResult.exports,
-      };
-      stepsContext[slugFromKey(componentKey)] = stepOutput;
-
-      // Store snapshot so the step's output paths are available for downstream reference validation
+      // Use $return_value and exports to match Pipedream's {{steps.X.$return_value}} / {{steps.X.exports.Y}} convention
       const snapshot: StepSnapshot = {
         $return_value: typedResult.ret ?? null,
         exports: typedResult.exports ?? {},
       };
+      stepsContext[slugFromKey(componentKey)] = snapshot;
       step.outputSnapshot = snapshot;
       step.tested = true;
 
@@ -501,7 +492,7 @@ export async function executeWorkflow(
         startedAt: stepStartedAt,
         completedAt: new Date().toISOString(),
         status: 'success',
-        output: stepOutput,
+        output: snapshot,
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

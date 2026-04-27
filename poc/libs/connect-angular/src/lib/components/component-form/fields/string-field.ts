@@ -10,6 +10,7 @@ function findInvalidInterpolation(value: string, availablePaths: string[]): stri
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(value)) !== null) {
     const ref = match[1].trim();
+    console.log(JSON.parse(JSON.stringify({availablePaths, ref})));
     if (ref.startsWith('steps.trigger.') && !hasTriggerPaths) continue;
     if (!availablePaths.includes(ref)) return `Unknown reference: {{${ref}}}`;
   }

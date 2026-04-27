@@ -1,4 +1,4 @@
-import type { PipedreamStep, StepSnapshot } from '@poc/data-access-api';
+import type { PipedreamStep, StepSnapshot, WorkflowStep } from '@poc/data-access-api';
 
 export function slugFromKey(componentKey: string): string {
   return componentKey.replace(/-/g, '_');
@@ -74,4 +74,33 @@ export function validateStepReferences(
   }
 
   return { valid: true };
+}
+
+/**
+ * Returns all available {{steps.*}} reference paths visible to the step at
+ * `selectedStepIndex`. Includes both concrete leaf paths (when a snapshot exists)
+ * and bare prefix paths (when not yet tested).
+ */
+export function getAvailablePaths(
+  steps: WorkflowStep[],
+  selectedStepIndex: number,
+): string[] {
+  console.log(JSON.parse(JSON.stringify({steps, selectedStepIndex})));
+  if (selectedStepIndex <= 0) return [];
+  const paths: string[] = [];
+  for (let i = 0; i < selectedStepIndex; i++) {
+    const step = steps[i];
+    const data = step.data;
+    if (!data || data.source !== 'pipedream') continue;
+    const pd = data as PipedreamStep;
+    if (!pd.component?.key) continue;
+    if (step.outputSnapshot) {
+      const prefix = step.type === 'trigger' ? 'steps.trigger' : `steps.${slugFromKey(pd.component.key)}`;
+      paths.push(...enumeratePaths(step.outputSnapshot, prefix));
+    } else {
+      const prefix = step.type === 'trigger' ? 'steps.trigger' : `steps.${slugFromKey(pd.component.key)}`;
+      paths.push(prefix);
+    }
+  }
+  return paths;
 }
