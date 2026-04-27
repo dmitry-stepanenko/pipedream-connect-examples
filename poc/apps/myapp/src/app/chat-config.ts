@@ -16,7 +16,7 @@ export const CHAT_PROVIDERS: ChatProvidersMap = {
   openai: {
     name: 'OpenAI',
     baseUrl: `${environment.apiUrl}/api/chat-openai`,
-    model: 'gpt-4o',
+    model: 'gpt-5.4',
     smallModel: 'gpt-4o-mini',
   },
 };

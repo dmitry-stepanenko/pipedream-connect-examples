@@ -312,6 +312,7 @@ export class AIChatDefinition {
       error: string | null;
       configuredProps: Record<string, unknown> | null;
     }> => {
+      console.log(JSON.parse(JSON.stringify({SET_PROPS: input})));
       const props: Record<string, PropOptionValue | string[]> = {};
       for (const entry of input.props as {
         name: string;
