@@ -24,7 +24,7 @@ import { ConnectAppComponent } from './connect-app.component';
 import { CaptureEventComponent } from './components/capture-event.component';
 import { PropOption, PropOptionValue } from '@pipedream/sdk';
 import { validateStepReferences } from './step-reference.utils';
-import { validatePropTypes, isPropOptional } from '@poc/shared';
+import { validatePropTypes, isPropOptional, isConfigurableProp } from '@poc/shared';
 import { WorkflowSuggestionCard } from './components/workflow-suggestions-card.component';
 
 /**
@@ -254,8 +254,7 @@ export class AIChatDefinition {
       const requiredProps = props
         .filter((p) => {
           if (p.type === 'app') return false;
-          if ((p as { readOnly?: boolean }).readOnly) return false;
-          return !isPropOptional(p);
+          return isConfigurableProp(p) && !isPropOptional(p)
         })
         .map((p) => ({
           name: p.name,
@@ -313,7 +312,7 @@ export class AIChatDefinition {
             }
           : null,
         allProperties: props
-          .filter((p) => p.type !== 'app' && !(p as { readOnly?: boolean }).readOnly)
+          .filter((p) => p.type !== 'app' && isConfigurableProp(p))
           .map((p) => ({
             name: p.name,
             label: p.label ?? p.name,

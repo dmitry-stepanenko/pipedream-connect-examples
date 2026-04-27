@@ -16,6 +16,8 @@
 <!-- - how "generate test event" play along with already published trigger? -->
 <!-- - try now vs emit test event in the trigger? -->
 <!-- - we can see triggers on a separate page, but we may have events separately? should we display this somehow? -->
+- check how it will behave when the desired result cannot be achieved (e.g. automatically select the channel for slack based on the channel it was sent from)
+
 
 Bugs:
 <!-- 1. when account is disconnected, it's not reflected in the workflow -->

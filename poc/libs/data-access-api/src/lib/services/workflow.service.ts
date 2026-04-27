@@ -173,6 +173,7 @@ export class WorkflowService {
     workflowId: string,
     stepId: string,
     snapshot: StepSnapshot | null,
+    { silent = false }: { silent?: boolean } = {},
   ) {
     this._workflows.update((list) =>
       list.map((w) =>
@@ -181,14 +182,14 @@ export class WorkflowService {
               ...w,
               steps: w.steps.map((s) =>
                 s.id === stepId
-                  ? { ...s, outputSnapshot: snapshot, tested: true }
+                  ? { ...s, outputSnapshot: snapshot, tested: true, snapshotStale: false }
                   : s,
               ),
             }
           : w,
       ),
     );
-    this._dirty.set(true);
+    if (!silent) this._dirty.set(true);
   }
 
   // ── Step testing ──────────────────────────────────────────────────────────
@@ -217,7 +218,7 @@ export class WorkflowService {
     try {
       const result = await this.api.testStep(workflowId, stepId);
       if (result.success && result.outputSnapshot) {
-        this.setStepSnapshot(workflowId, stepId, result.outputSnapshot);
+        this.setStepSnapshot(workflowId, stepId, result.outputSnapshot, { silent: true });
       }
       return result;
     } catch (err: unknown) {
@@ -268,7 +269,7 @@ export class WorkflowService {
     this.setStepSnapshot(workflowId, triggerStep.id, {
       $return_value: event.event,
       exports: {},
-    });
+    }, { silent: true });
   }
 
   async captureEvent(
@@ -285,7 +286,7 @@ export class WorkflowService {
           $return_value: event.event,
           exports: {},
         };
-        this.setStepSnapshot(workflowId, triggerStep.id, snapshot);
+        this.setStepSnapshot(workflowId, triggerStep.id, snapshot, { silent: true });
       }
       // Prepend to local event list
       this.triggerEvents.update((evts) => [event, ...evts]);

@@ -3,14 +3,13 @@ import type { Workflow, PipedreamStep, StepSnapshot } from '../models/workflow.m
 import type { ENV_VARS } from '../env-vars';
 import type {
   ExecutionRun,
-  ExecutionStepResult,
   ExecutionTriggerSource,
 } from '../models/execution-run.model';
 import { getWorkflow, saveWorkflow } from './workflow-store';
 import { createRunId, saveExecutionRun } from './execution-store';
 import type { Db } from '../db';
 import { normalizeAppProps } from '../utils/normalize-props';
-import { isPropOptional } from '@poc/shared';
+import { isConfigurableProp, isPropOptional } from '@poc/shared';
 
 // ── Interpolation ────────────────────────────────────────────────────────────
 
@@ -340,7 +339,7 @@ export async function testStep(
 
   const rawProps = pdStep.configuredProps as Record<string, unknown>;
   const missingRequired = (pdStep.component.configurableProps ?? [])
-    .filter((p) => !isPropOptional(p))
+    .filter((p) => isConfigurableProp(p) && !isPropOptional(p))
     .filter((p) => {
       const val = rawProps[p.name];
       if (p.type === 'app') {

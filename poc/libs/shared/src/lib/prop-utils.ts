@@ -1,3 +1,4 @@
+import type { ConfigurableProp } from '@pipedream/sdk';
 /**
  * Returns true if a Pipedream configurable prop should be treated as optional.
  *
@@ -13,6 +14,26 @@ export function isPropOptional(prop: {
   default?: unknown;
 }): boolean {
   if (prop.optional === true) return true;
-  if (prop.optional === undefined && prop.default !== undefined && prop.default !== null) return true;
+  if (
+    prop.optional === undefined &&
+    prop.default !== undefined &&
+    prop.default !== null
+  )
+    return true;
   return false;
+}
+
+/**
+ * Returns true if a prop is a user-configurable field that the LLM or user
+ * is expected to supply a value for.
+ *
+ * Excludes:
+ *  - `readOnly` props — computed/internal, not settable by the user
+ */
+export function isConfigurableProp(
+  prop: ConfigurableProp & {
+    readOnly?: boolean;
+  },
+): boolean {
+  return !prop.readOnly;
 }
