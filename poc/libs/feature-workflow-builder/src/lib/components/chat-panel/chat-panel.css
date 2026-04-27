@@ -94,9 +94,45 @@
 
 .pd-chat-input-row {
   display: flex;
-  gap: 8px;
-  padding: 12px;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
   border-top: 1px solid #e5e7eb;
+}
+
+.pd-iteration-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--mat-app-surface-container-low, #f5f5f5);
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
+  color: var(--mat-app-on-surface, #333);
+}
+
+.pd-iteration-warning-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pd-iteration-btn {
+  padding: 4px 14px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.pd-iteration-btn--stop {
+  color: #dc2626;
+}
+
+.pd-iteration-btn--continue {
+  color: #4f46e5;
 }
 
 .pd-chat-input {

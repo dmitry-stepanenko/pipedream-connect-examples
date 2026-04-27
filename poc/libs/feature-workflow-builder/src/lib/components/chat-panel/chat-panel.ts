@@ -69,6 +69,15 @@ import { AIChatDefinition } from './chat-definition';
       </div>
 
       <div class="pd-chat-input-row">
+        @if (iterationWarning()) {
+          <div class="pd-iteration-warning">
+            <span>The chat has been iterating for a while. Do you want to continue?</span>
+            <div class="pd-iteration-warning-actions">
+              <button class="pd-iteration-btn pd-iteration-btn--stop" (click)="stopIteration()">Stop</button>
+              <button class="pd-iteration-btn pd-iteration-btn--continue" (click)="continueIteration()">Continue</button>
+            </div>
+          </div>
+        }
         <esp-ai-assistant-composer
           class="w-full"
           [loading]="chat().isLoading()"
@@ -163,6 +172,9 @@ export class ChatPanelComponent implements AfterViewInit {
   private readonly _chatDefinition = new AIChatDefinition();
 
   private pendingToolRefresh = false;
+  readonly iterationWarning = signal(false);
+  // Message index from which the iteration counter restarts after the user clicks Continue.
+  private _iterationCheckpoint = 0;
 
   constructor() {
     // Initialize the chat (runs in constructor = injection context is available)
@@ -202,6 +214,40 @@ export class ChatPanelComponent implements AfterViewInit {
           // so isSending is never cleared → permanently stuck loading.
           const needsResend = lastMsgRole !== 'assistant';
           this.resetChat({ messages, resend: needsResend });
+        });
+      }
+    });
+
+    // Iteration guard — watch tool calls in assistant messages since the last
+    // user message. If a single tool is called ≥5 times or total tool calls
+    // reach 30, stop the chat and show the "iterating" banner.
+    // _iterationCheckpoint lets the user click Continue to reset the counts
+    // without losing the conversation history.
+    effect(() => {
+      const messages = this.chat().value() ?? [];
+      // Find the index of the last user message so we only count the current turn.
+      let lastUserIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') { lastUserIdx = i; break; }
+      }
+      // Start counting from whichever is later: the turn start or the checkpoint.
+      const startIdx = Math.max(lastUserIdx + 1, untracked(() => this._iterationCheckpoint));
+      let totalCalls = 0;
+      const countByTool = new Map<string, number>();
+      for (let i = startIdx; i < messages.length; i++) {
+        const msg = messages[i] as any;
+        if (msg.role === 'assistant') {
+          for (const tc of (msg.toolCalls ?? [])) {
+            totalCalls++;
+            countByTool.set(tc.name, (countByTool.get(tc.name) ?? 0) + 1);
+          }
+        }
+      }
+      const maxSingle = countByTool.size > 0 ? Math.max(...countByTool.values()) : 0;
+      if ((totalCalls >= 30 || maxSingle >= 5) && !untracked(() => this.iterationWarning())) {
+        untracked(() => {
+          this.chat().stop();
+          this.iterationWarning.set(true);
         });
       }
     });
@@ -268,11 +314,23 @@ export class ChatPanelComponent implements AfterViewInit {
   }
 
   sendMessage(message: string) {
+    this.iterationWarning.set(false);
+    this._iterationCheckpoint = 0;
     this.chat().sendMessage({ role: 'user', content: message });
   }
 
   retryMessages() {
     this.chat().resendMessages();
+  }
+
+  continueIteration() {
+    this._iterationCheckpoint = this.chat().value()?.length ?? 0;
+    this.iterationWarning.set(false);
+    this.chat().resendMessages();
+  }
+
+  stopIteration() {
+    this.iterationWarning.set(false);
   }
 
   onProviderChange(key: string) {
