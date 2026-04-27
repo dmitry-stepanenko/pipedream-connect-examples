@@ -35,13 +35,25 @@ import { WorkflowSuggestionCard } from './components/workflow-suggestions-card.c
  * Instructions arrive in the tool result exactly when the LLM has just
  * loaded the component and is deciding what props to set — best possible timing.
  */
-function getComponentHint(appSlug: string, componentKey: string): string | null {
+/**
+ * Manual validation for specific component/app combinations.
+ * Returns a user-facing error string if the component should be rejected,
+ * or null if it is acceptable. Runs before any workflow state is mutated.
+ */
+function getComponentError(appSlug: string, componentKey: string): string | null {
+  if (appSlug === 'openai') {
+    console.log(JSON.parse(JSON.stringify({componentKey})));
+    const validKey = 'openai-chat';
+    if (componentKey !== validKey) {
+      return `Component '${componentKey}' is deprecated. Use "${validKey}" generic chat "componentKey" instead — call list_app_components to confirm the correct key, then retry configure_step with it.`;
+    }
+  }
+  return null;
+}
+
+function getComponentHint(appSlug: string, _componentKey: string): string | null {
   // All OpenAI actions: prefer chat completions + cheapest model.
   if (appSlug === 'openai') {
-    // Legacy /completions actions — redirect to the chat completions action.
-    if (componentKey === 'openai-text-completion-with-prompt' || componentKey === 'openai-send-prompt') {
-      return 'DEPRECATED: use the" openai-chat" action instead';
-    }
     // All other OpenAI actions: default to the cheapest available model.
     return 'Use the "gpt-4o-mini" model unless the user has asked for a specific one. If not available, prefer the simplest and cheapest model from the available options list.';
   }
@@ -206,6 +218,12 @@ export class AIChatDefinition {
           success: false,
           error: `Component '${input.componentKey}' not found`,
         };
+
+      const componentError = getComponentError(input.appSlug, input.componentKey);
+      if (componentError) {
+        return { success: false, error: componentError };
+      }
+
       const data: PipedreamStep = {
         source: 'pipedream',
         app,
@@ -509,14 +527,16 @@ export class AIChatDefinition {
       const response = await this.pdClient.listComponents({
         app: input.appSlug,
         componentType: type,
-        limit: 30,
+        limit: 100,
       });
-      const components = (response.data ?? []).map((c) => ({
-        key: c.key,
-        name: c.name,
-        description: c.description,
-        type: c.componentType,
-      }));
+      const components = (response.data ?? [])
+        .filter((c) => !getComponentError(input.appSlug, c.key))
+        .map((c) => ({
+          key: c.key,
+          name: c.name,
+          description: c.description,
+          type: c.componentType,
+        }));
       return { app: input.appSlug, components };
     },
   });

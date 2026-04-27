@@ -10,6 +10,7 @@ import { getWorkflow, saveWorkflow } from './workflow-store';
 import { createRunId, saveExecutionRun } from './execution-store';
 import type { Db } from '../db';
 import { normalizeAppProps } from '../utils/normalize-props';
+import { isPropOptional } from '@poc/shared';
 
 // ── Interpolation ────────────────────────────────────────────────────────────
 
@@ -342,7 +343,7 @@ export async function testStep(
 
   const rawProps = pdStep.configuredProps as Record<string, unknown>;
   const missingRequired = (pdStep.component.configurableProps ?? [])
-    .filter((p) => !p.optional)
+    .filter((p) => !isPropOptional(p))
     .filter((p) => {
       const val = rawProps[p.name];
       if (p.type === 'app') {
