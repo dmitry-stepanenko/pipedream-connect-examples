@@ -138,6 +138,9 @@ export class CaptureEventComponent {
       } else {
         this.state.set('error');
         this.errorMessage.set(result.error ?? 'Unknown error');
+        this.sendMessage(
+          `I clicked "Capture Event" but it failed with the following error:\n\n${result.error ?? 'Unknown error'}\n\nPlease fix the trigger configuration and try again.`,
+        );
       }
     } finally {
       clearInterval(timer);

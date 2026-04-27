@@ -364,3 +364,258 @@ describe('validatePropTypes — multiple errors', () => {
     expect(result.message).toContain('"count"');
   });
 });
+
+// ---------------------------------------------------------------------------
+// validatePropTypes — $.interface.timer
+// ---------------------------------------------------------------------------
+
+describe('validatePropTypes — $.interface.timer', () => {
+  it('accepts { intervalSeconds: 900 }', () => {
+    const result = validatePropTypes(
+      props({ timer: { intervalSeconds: 900 } }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts { cron: "0 * * * *" }', () => {
+    const result = validatePropTypes(
+      props({ timer: { cron: '0 * * * *' } }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts object with both intervalSeconds and cron', () => {
+    const result = validatePropTypes(
+      props({ timer: { intervalSeconds: 300, cron: '0 * * * *' } }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a plain string "900"', () => {
+    const result = validatePropTypes(
+      props({ timer: '900' }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+
+  it('rejects an array like ["", "{\"intervalSeconds\":900}"]', () => {
+    const result = validatePropTypes(
+      props({ timer: ['', '{"intervalSeconds":900}'] }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+
+  it('rejects an integer', () => {
+    const result = validatePropTypes(
+      props({ timer: 900 }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+
+  it('rejects null', () => {
+    const result = validatePropTypes(
+      props({ timer: null }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+
+  it('rejects an object with neither intervalSeconds nor cron', () => {
+    const result = validatePropTypes(
+      props({ timer: {} }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/missing both/i);
+  });
+
+  it('rejects intervalSeconds that is a string', () => {
+    const result = validatePropTypes(
+      props({ timer: { intervalSeconds: '900' } }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/positive integer/i);
+  });
+
+  it('rejects intervalSeconds that is 0', () => {
+    const result = validatePropTypes(
+      props({ timer: { intervalSeconds: 0 } }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/positive integer/i);
+  });
+
+  it('rejects cron that is an empty string', () => {
+    const result = validatePropTypes(
+      props({ timer: { cron: '' } }),
+      defs([{ name: 'timer', type: '$.interface.timer' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/non-empty cron/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validatePropTypes — alert (display-only, must be rejected)
+// ---------------------------------------------------------------------------
+
+describe('validatePropTypes — alert', () => {
+  it('rejects any value for an alert prop', () => {
+    const result = validatePropTypes(
+      props({ alert: 'hello' }),
+      defs([{ name: 'alert', type: 'alert' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/display-only/i);
+    expect(result.errors[0].message).toMatch(/do not include/i);
+  });
+
+  it('rejects null for an alert prop', () => {
+    const result = validatePropTypes(
+      props({ alert: null }),
+      defs([{ name: 'alert', type: 'alert' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/display-only/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validatePropTypes — dir and sql (must be strings)
+// ---------------------------------------------------------------------------
+
+describe('validatePropTypes — dir', () => {
+  it('accepts a string path', () => {
+    const result = validatePropTypes(
+      props({ outputDir: '/tmp/output' }),
+      defs([{ name: 'outputDir', type: 'dir' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a number', () => {
+    const result = validatePropTypes(
+      props({ outputDir: 42 }),
+      defs([{ name: 'outputDir', type: 'dir' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain string/i);
+  });
+
+  it('rejects an array', () => {
+    const result = validatePropTypes(
+      props({ outputDir: ['/tmp'] }),
+      defs([{ name: 'outputDir', type: 'dir' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain string/i);
+  });
+});
+
+describe('validatePropTypes — sql', () => {
+  it('accepts a SQL string', () => {
+    const result = validatePropTypes(
+      props({ query: 'SELECT * FROM users' }),
+      defs([{ name: 'query', type: 'sql' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects an object', () => {
+    const result = validatePropTypes(
+      props({ query: { sql: 'SELECT 1' } }),
+      defs([{ name: 'query', type: 'sql' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain string/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validatePropTypes — http_request and $.interface.apphook (must be objects)
+// ---------------------------------------------------------------------------
+
+describe('validatePropTypes — http_request', () => {
+  it('accepts a plain object', () => {
+    const result = validatePropTypes(
+      props({ request: { method: 'GET', url: 'https://example.com' } }),
+      defs([{ name: 'request', type: 'http_request' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a string', () => {
+    const result = validatePropTypes(
+      props({ request: 'https://example.com' }),
+      defs([{ name: 'request', type: 'http_request' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+
+  it('rejects an array', () => {
+    const result = validatePropTypes(
+      props({ request: [{ method: 'GET' }] }),
+      defs([{ name: 'request', type: 'http_request' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+});
+
+describe('validatePropTypes — $.interface.apphook', () => {
+  it('accepts a plain object', () => {
+    const result = validatePropTypes(
+      props({ hook: { eventNames: ['push'] } }),
+      defs([{ name: 'hook', type: '$.interface.apphook' }]),
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a string', () => {
+    const result = validatePropTypes(
+      props({ hook: 'push' }),
+      defs([{ name: 'hook', type: '$.interface.apphook' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+
+  it('rejects an array', () => {
+    const result = validatePropTypes(
+      props({ hook: ['push', 'pull_request'] }),
+      defs([{ name: 'hook', type: '$.interface.apphook' }]),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toMatch(/plain object/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validatePropTypes — silently skipped types (any, app, data_store, etc.)
+// ---------------------------------------------------------------------------
+
+describe('validatePropTypes — silently skipped types', () => {
+  it.each(['any', 'app', 'data_store', '$.interface.http', '$.service.db'])(
+    'skips validation for type "%s"',
+    (type) => {
+      const result = validatePropTypes(
+        props({ field: ['unexpected', 'array'] }),
+        defs([{ name: 'field', type }]),
+      );
+      expect(result.valid).toBe(true);
+    },
+  );
+});

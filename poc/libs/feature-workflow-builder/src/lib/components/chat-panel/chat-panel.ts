@@ -193,10 +193,15 @@ export class ChatPanelComponent implements AfterViewInit {
       if (!loading && this.pendingToolRefresh) {
         untracked(() => {
           this.pendingToolRefresh = false;
-          this.resetChat({
-            messages: this.chat().value(),
-            resend: true,
-          });
+          const messages = this.chat().value() ?? [];
+          const lastMsgRole = messages[messages.length - 1]?.role;
+          // Only resend when the LLM still needs to respond. If the conversation
+          // already ended with an assistant message, resendMessages() would set
+          // isSending=true in hashbrown but the sizzle handler returns early
+          // (shouldGenerateMessage = false for assistant-last conversations),
+          // so isSending is never cleared → permanently stuck loading.
+          const needsResend = lastMsgRole !== 'assistant';
+          this.resetChat({ messages, resend: needsResend });
         });
       }
     });

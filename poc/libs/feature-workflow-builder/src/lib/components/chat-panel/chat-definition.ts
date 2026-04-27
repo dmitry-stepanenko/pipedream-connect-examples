@@ -654,11 +654,11 @@ ${examples}
     name: 'review_workflow',
     description:
       "Spawn a sub-agent to critically review the current workflow against the user's stated intent. " +
-      'Call this after the workflow is fully configured to catch problems before the user runs it: ' +
-      'missing context that would cause a step to produce wrong or empty results, props that are ' +
-      'too generic or ambiguous, mismatched data flowing between steps, steps that will likely fail ' +
-      "due to underspecified inputs, or anything that doesn't match what the user asked for. " +
-      'Always call this before presenting the workflow as complete.',
+      'Call this after the workflow is fully configured to catch problems before the user runs it. ' +
+      'IMPORTANT: After the review returns, you MUST immediately fix every issue with severity "error" ' +
+      'by calling the appropriate tools (set_step_props, clear_step_config + configure_step, etc.) ' +
+      'WITHOUT asking the user first — fix silently and only report if you need information you cannot infer. ' +
+      'Only present the workflow summary card once all errors are resolved.',
     schema: s.object('ReviewWorkflowInput', {
       userIntent: s.string(
         "The user's original goal for this workflow in their own words — what they want it to do and why",
@@ -670,6 +670,7 @@ ${examples}
       approved: boolean;
       summary: string;
       issues: {
+        stepId: string;
         step: string;
         severity: string;
         description: string;
@@ -686,45 +687,61 @@ ${examples}
 
       return this.completionService.complete({
         debugName: 'workflow-review',
-        system: `You are a workflow quality reviewer. The user built an automation workflow and you must
-review it critically against their stated intent.
+        system: `You are a strict workflow quality reviewer. Your job is to find ONLY genuine blocking problems
+— issues that will cause the workflow to FAIL AT RUNTIME or produce CLEARLY WRONG output for the stated intent.
 
-Look for concrete problems that would cause the workflow to fail or produce wrong results:
-- Props with values that are too vague, placeholder-like, or clearly wrong for the use case
-- Required context missing from a step that would make its output empty or incorrect
-  (e.g. a search step with no filters when the user wanted specific results)
-- Data passed between steps that doesn't match — wrong field, wrong format, wrong units
-- A step's configured values that contradict the user's intent
-- Steps that are functionally incomplete even if technically configured
+WHAT COUNTS AS AN ERROR (severity: "error"):
+- A required prop (optional: false AND no default value) that is not configured — will throw at runtime.
+- A prop value that is syntactically invalid for its type (e.g. a plain integer string "900" set for a
+  timer prop that expects an object like { intervalSeconds: 900 }).
+- A step reference {{steps.X.field}} that points to a field not present in that step's outputSnapshot.
+- A component that is explicitly deprecated in its own description AND a better replacement exists
+  (e.g. the component description itself says "use the Chat action instead").
+- A component whose purpose fundamentally mismatches the stated intent (e.g. "Send Email" when the
+  user wanted to receive emails and reply).
 
-Use outputSnapshot values (actual test run results) where available — they reveal whether
-data flowing between steps is correct, whether filters returned meaningful results, and
-whether referenced fields actually exist in the output.
+WHAT COUNTS AS A WARNING (severity: "warning"):
+- A component that is likely to produce poor results but won't crash (e.g. an outdated model that still
+  works but produces lower quality output).
+- A prop value that is technically valid but probably wrong given the user's intent.
 
-Do NOT flag things that are genuinely optional or stylistic preferences.
-Be specific: name the step, the prop, and exactly what's wrong and what to do instead.
+DO NOT FLAG — these are NOT issues:
+- Optional props (optional: true) that are not set. They have defaults and work fine.
+- Props that have a default value and are not overridden. The default IS the configured value.
+- Stylistic or preference choices.
+- Things that "could be improved" but won't break the workflow.
+- Labels/filters on triggers that are optional — leave them alone unless they're explicitly required.
+- Any speculation about what MIGHT go wrong if some other setting were wrong.
 
-Respond with a structured review.`,
+IMPORTANT: Each issue must include the exact stepId from the workflow data so fixes can be applied programmatically.
+
+The workflow data provided includes:
+- Each step's configuredProps (what is currently set)
+- Each step's component.configurableProps (all available props with their optional flag and default value)
+- Each step's outputSnapshot (actual test run data, if available)
+
+Cross-reference configuredProps against configurableProps to determine what is missing vs. what has a default.
+Only an unset required prop with NO default is a genuine configuration error.`,
         input: {
           userIntent: input.userIntent,
           workflow,
         },
         schema: s.object('WorkflowReview', {
           approved: s.boolean(
-            'True only if the workflow looks correct and complete for the stated intent',
+            'True only if the workflow has no errors and will run correctly for the stated intent',
           ),
           summary: s.string('One or two sentence overall assessment'),
           issues: s.array(
             'Specific problems found — empty if approved',
             s.object('Issue', {
-              step: s.string('Step name or "workflow" for overall issues'),
+              stepId: s.string('The exact step ID from the workflow data (e.g. "1777040471639-xx462w")'),
+              step: s.string('Human-readable step name for display'),
               severity: s.anyOf([
-                s.string('"error" — will fail or produce wrong results'),
-                s.string('"warning" — likely to produce poor results'),
-                s.string('"suggestion" — could be improved'),
+                s.string('"error" — will fail or produce clearly wrong results; must be fixed'),
+                s.string('"warning" — likely to produce poor results but won\'t crash'),
               ]),
-              description: s.string('What is wrong and why it matters'),
-              fix: s.string('Concrete action to resolve it'),
+              description: s.string('What is wrong and why it matters — be specific about the prop and value'),
+              fix: s.string('Exact action to resolve it: which tool to call, which prop to set, what value to use'),
             }),
           ),
         }),
@@ -911,6 +928,10 @@ Respond with a structured review.`,
               9. Check list_custom_triggers for internal event triggers.
               10. After building, list steps that require account connections.
               11. Call review_workflow with the user's original intent to catch any issues before finishing.
+                  After it returns, IMMEDIATELY fix every "error" severity issue by calling the appropriate
+                  tools (set_step_props, clear_step_config + configure_step, etc.) — do this silently
+                  without asking the user. Only ask the user if you need information you cannot infer.
+                  Call review_workflow again after fixing to confirm the workflow is clean.
               12. Show a summary using the workflow-suggestion-card component.
             </building_sequence>
 
